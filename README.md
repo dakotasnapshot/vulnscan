@@ -2,8 +2,6 @@
 
 Lightweight, self-hosted vulnerability management platform. SSH-based package scanning, OSV.dev vulnerability lookup, automated remediation, compliance policies — all in a single-file dashboard with zero external dependencies.
 
-Think Rapid7 InsightVM, but for your homelab.
-
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 ## Features
