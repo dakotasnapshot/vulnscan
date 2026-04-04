@@ -1,0 +1,40 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+db/*.db*
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials (never commit these!)
+*.pem
+*.key
+*_rsa
+*_rsa.pub
+credentials.json
+secrets.yaml

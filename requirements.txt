@@ -1,0 +1,7 @@
+# VulnScan has ZERO external dependencies!
+# Everything uses Python standard library only.
+# 
+# Optional tools for deployment:
+# - sshpass (for password-based SSH, install via OS package manager)
+#
+# Python 3.8+ required

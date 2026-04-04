@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VulnScan — Vulnerability Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #242836;
+            --border: #2e3344;
+            --text: #e4e6ef;
+            --text-dim: #8b8fa3;
+            --accent: #6c7ee1;
+            --critical: #ef4444;
+            --high: #f97316;
+            --medium: #eab308;
+            --low: #3b82f6;
+            --success: #22c55e;
+            --radius: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        /* Layout */
+        .app { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+        .sidebar h1 {
+            font-size: 18px;
+            padding: 0 20px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sidebar h1 .icon { font-size: 22px; }
+        .nav { padding: 12px 0; }
+        .nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.15s;
+            cursor: pointer;
+        }
+        .nav a:hover, .nav a.active {
+            color: var(--text);
+            background: var(--surface2);
+        }
+        .nav a.active { border-left: 3px solid var(--accent); }
+        .main { flex: 1; padding: 24px 32px; overflow-x: auto; }
+
+        /* Cards */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .stat-card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
+        .stat-card.critical .value { color: var(--critical); }
+        .stat-card.high .value { color: var(--high); }
+        .stat-card.medium .value { color: var(--medium); }
+        .stat-card.low .value { color: var(--low); }
+
+        /* Tables */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-header h2 { font-size: 16px; font-weight: 600; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 10px 16px;
+            color: var(--text-dim);
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background: var(--surface2); }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge.critical { background: rgba(239,68,68,0.15); color: var(--critical); }
+        .badge.high { background: rgba(249,115,22,0.15); color: var(--high); }
+        .badge.medium { background: rgba(234,179,8,0.15); color: var(--medium); }
+        .badge.low { background: rgba(59,130,246,0.15); color: var(--low); }
+        .badge.unknown { background: rgba(139,143,163,0.15); color: var(--text-dim); }
+        .badge.completed { background: rgba(34,197,94,0.15); color: var(--success); }
+        .badge.running { background: rgba(108,126,225,0.15); color: var(--accent); }
+        .badge.failed { background: rgba(239,68,68,0.15); color: var(--critical); }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.15s;
+        }
+        .btn:hover { background: var(--border); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); }
+        .btn.primary:hover { opacity: 0.9; }
+        .btn.danger { background: var(--critical); border-color: var(--critical); }
+        .btn.sm { padding: 4px 10px; font-size: 12px; }
+
+        /* Forms */
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 480px;
+            max-width: 90vw;
+        }
+        .modal h3 { margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select { width: auto; min-width: 120px; }
+
+        /* Host bar chart */
+        .host-bar {
+            display: flex;
+            height: 20px;
+            border-radius: 4px;
+            overflow: hidden;
+            min-width: 120px;
+        }
+        .host-bar .seg { height: 100%; min-width: 2px; }
+        .host-bar .seg.critical { background: var(--critical); }
+        .host-bar .seg.high { background: var(--high); }
+        .host-bar .seg.medium { background: var(--medium); }
+        .host-bar .seg.low { background: var(--low); }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 13px;
+            z-index: 200;
+            animation: slideIn 0.3s;
+        }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .empty { padding: 40px; text-align: center; color: var(--text-dim); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { padding: 16px; }
+            .stat-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <h1><span class="icon">🛡️</span> VulnScan</h1>
+            <nav class="nav">
+                <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
+                <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
+                <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
+                <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
+            </nav>
+        </aside>
+
+        <main class="main" id="content">
+            <!-- Content injected by JS -->
+        </main>
+    </div>
+
+    <!-- Add Host Modal -->
+    <div class="modal-overlay" id="addHostModal">
+        <div class="modal">
+            <h3>Add Host</h3>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="host-name" placeholder="e.g. web-server-1">
+            </div>
+            <div class="form-group">
+                <label>Address (IP or hostname)</label>
+                <input type="text" id="host-address" placeholder="e.g. 192.168.1.10">
+            </div>
+            <div class="form-group">
+                <label>SSH User</label>
+                <input type="text" id="host-user" value="root">
+            </div>
+            <div class="form-group">
+                <label>SSH Password (leave blank for key auth)</label>
+                <input type="password" id="host-password">
+            </div>
+            <div class="form-group">
+                <label>SSH Key Path (leave blank for password auth)</label>
+                <input type="text" id="host-keypath" placeholder="/root/.ssh/id_rsa">
+            </div>
+            <div class="form-group">
+                <label>SSH Port</label>
+                <input type="number" id="host-port" value="22">
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <input type="text" id="host-tags" placeholder="production, web">
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn primary" onclick="addHost()">Add Host</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const API = '';  // Same origin
+
+    // State
+    let currentPage = 'dashboard';
+    let dashboardData = null;
+
+    // --- API Helpers ---
+    async function api(method, path, body = null) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API + path, opts);
+        return res.json();
+    }
+
+    function toast(msg) {
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3000);
+    }
+
+    // --- Pages ---
+    async function showPage(page) {
+        currentPage = page;
+        document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+        document.getElementById('nav-' + page)?.classList.add('active');
+
+        const el = document.getElementById('content');
+        switch (page) {
+            case 'dashboard': el.innerHTML = await renderDashboard(); break;
+            case 'hosts': el.innerHTML = await renderHosts(); break;
+            case 'vulns': el.innerHTML = await renderVulns(); break;
+            case 'scans': el.innerHTML = await renderScans(); break;
+        }
+    }
+
+    // --- Dashboard ---
+    async function renderDashboard() {
+        const d = await api('GET', '/api/dashboard');
+        dashboardData = d;
+
+        let hostsHtml = '';
+        for (const h of (d.hosts_summary || [])) {
+            const total = h.total || 0;
+            const maxBar = Math.max(total, 1);
+            hostsHtml += `<tr>
+                <td><strong>${esc(h.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${esc(h.address)}</span></td>
+                <td>
+                    <div class="host-bar" title="C:${h.critical} H:${h.high} M:${h.medium} L:${h.low}">
+                        ${h.critical ? `<div class="seg critical" style="width:${h.critical/maxBar*100}%"></div>` : ''}
+                        ${h.high ? `<div class="seg high" style="width:${h.high/maxBar*100}%"></div>` : ''}
+                        ${h.medium ? `<div class="seg medium" style="width:${h.medium/maxBar*100}%"></div>` : ''}
+                        ${h.low ? `<div class="seg low" style="width:${h.low/maxBar*100}%"></div>` : ''}
+                    </div>
+                </td>
+                <td style="text-align:right">${total}</td>
+            </tr>`;
+        }
+
+        let scansHtml = '';
+        for (const s of (d.recent_scans || []).slice(0, 5)) {
+            scansHtml += `<tr>
+                <td>${esc(s.host_name)}</td>
+                <td><span class="badge ${s.status}">${s.status}</span></td>
+                <td>${s.packages_found}</td>
+                <td>${s.vulns_found}</td>
+                <td>${timeAgo(s.started_at)}</td>
+            </tr>`;
+        }
+
+        return `
+            <h2 style="margin-bottom:20px">Dashboard</h2>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="label">Hosts</div><div class="value">${d.total_hosts}</div></div>
+                <div class="stat-card critical"><div class="label">Critical</div><div class="value">${d.critical}</div></div>
+                <div class="stat-card high"><div class="label">High</div><div class="value">${d.high}</div></div>
+                <div class="stat-card medium"><div class="label">Medium</div><div class="value">${d.medium}</div></div>
+                <div class="stat-card low"><div class="label">Low</div><div class="value">${d.low}</div></div>
+                <div class="stat-card"><div class="label">Total Open</div><div class="value">${d.total_vulns}</div></div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Hosts Overview</h2>
+                        <button class="btn primary sm" onclick="scanAll()">Scan All</button>
+                    </div>
+                    <table>
+                        <tr><th>Host</th><th>Vulnerabilities</th><th style="text-align:right">Total</th></tr>
+                        ${hostsHtml || '<tr><td colspan="3" class="empty">No hosts configured</td></tr>'}
+                    </table>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header"><h2>Recent Scans</h2></div>
+                    <table>
+                        <tr><th>Host</th><th>Status</th><th>Pkgs</th><th>Vulns</th><th>When</th></tr>
+                        ${scansHtml || '<tr><td colspan="5" class="empty">No scans yet</td></tr>'}
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- Hosts ---
+    async function renderHosts() {
+        const hosts = await api('GET', '/api/hosts');
+        let rows = '';
+        for (const h of hosts) {
+            rows += `<tr>
+                <td><strong>${esc(h.name)}</strong></td>
+                <td>${esc(h.address)}</td>
+                <td>${esc(h.ssh_user)}</td>
+                <td>${esc(h.os_name || '—')}</td>
+                <td>${h.last_scan ? timeAgo(h.last_scan) : 'Never'}</td>
+                <td>${h.enabled ? '✅' : '❌'}</td>
+                <td>
+                    <button class="btn sm" onclick="scanHost(${h.id})">Scan</button>
+                    <button class="btn sm danger" onclick="deleteHost(${h.id})">Delete</button>
+                </td>
+            </tr>`;
+        }
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Hosts</h2>
+                <button class="btn primary" onclick="document.getElementById('addHostModal').classList.add('active')">+ Add Host</button>
+            </div>
+            <div class="panel">
+                <table>
+                    <tr><th>Name</th><th>Address</th><th>User</th><th>OS</th><th>Last Scan</th><th>Enabled</th><th>Actions</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No hosts configured yet</td></tr>'}
+                </table>
+            </div>
+        `;
+    }
+
+    // --- Vulnerabilities ---
+    async function renderVulns(severity = null, hostId = null) {
+        let qp = '?status=open';
+        if (severity) qp += `&severity=${severity}`;
+        if (hostId) qp += `&host_id=${hostId}`;
+        const vulns = await api('GET', '/api/vulnerabilities' + qp);
+        const hosts = await api('GET', '/api/hosts');
+
+        let rows = '';
+        for (const v of vulns) {
+            rows += `<tr>
+                <td><span class="badge ${v.severity}">${v.severity}</span></td>
+                <td><strong>${esc(v.cve_id)}</strong></td>
+                <td>${esc(v.package_name)} <span style="color:var(--text-dim)">${esc(v.package_version)}</span></td>
+                <td>${esc(v.fixed_version || '—')}</td>
+                <td>${esc(v.host_name)}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.summary)}">${esc(v.summary)}</td>
+                <td>
+                    <select class="btn sm" onchange="updateVulnStatus(${v.id}, this.value)" style="width:auto">
+                        <option value="open" ${v.status==='open'?'selected':''}>Open</option>
+                        <option value="acknowledged" ${v.status==='acknowledged'?'selected':''}>Ack</option>
+                        <option value="false_positive" ${v.status==='false_positive'?'selected':''}>FP</option>
+                        <option value="fixed" ${v.status==='fixed'?'selected':''}>Fixed</option>
+                    </select>
+                </td>
+            </tr>`;
+        }
+
+        let hostOpts = '<option value="">All Hosts</option>';
+        for (const h of hosts) hostOpts += `<option value="${h.id}" ${hostId==h.id?'selected':''}>${esc(h.name)}</option>`;
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Vulnerabilities (${vulns.length})</h2>
+                <div class="filters">
+                    <select onchange="showVulnsFiltered()" id="filter-severity">
+                        <option value="">All Severities</option>
+                        <option value="critical" ${severity==='critical'?'selected':''}>Critical</option>
+                        <option value="high" ${severity==='high'?'selected':''}>High</option>
+                        <option value="medium" ${severity==='medium'?'selected':''}>Medium</option>
+                        <option value="low" ${severity==='low'?'selected':''}>Low</option>
+                    </select>
+                    <select onchange="showVulnsFiltered()" id="filter-host">${hostOpts}</select>
+                </div>
+            </div>
+            <div class="panel">
+                <table>
+                    <tr><th>Severity</th><th>CVE</th><th>Package</th><th>Fix</th><th>Host</th><th>Summary</th><th>Status</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No vulnerabilities found 🎉</td></tr>'}
+                </table>
+            </div>
+        `;
+    }
+
+    async function showVulnsFiltered() {
+        const sev = document.getElementById('filter-severity')?.value || null;
+        const host = document.getElementById('filter-host')?.value || null;
+        document.getElementById('content').innerHTML = await renderVulns(sev, host);
+    }
+
+    // --- Scans ---
+    async function renderScans() {
+        const scans = await api('GET', '/api/scans?limit=50');
+        let rows = '';
+        for (const s of scans) {
+            const duration = s.finished_at ? timeDiff(s.started_at, s.finished_at) : '—';
+            rows += `<tr>
+                <td>${s.id}</td>
+                <td>${esc(s.host_name)}</td>
+                <td><span class="badge ${s.status}">${s.status}</span></td>
+                <td>${s.packages_found}</td>
+                <td>${s.vulns_found}</td>
+                <td>${duration}</td>
+                <td>${timeAgo(s.started_at)}</td>
+            </tr>`;
+        }
+        return `
+            <h2 style="margin-bottom:20px">Scan History</h2>
+            <div class="panel">
+                <table>
+                    <tr><th>#</th><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>Duration</th><th>When</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No scans yet</td></tr>'}
+                </table>
+            </div>
+        `;
+    }
+
+    // --- Actions ---
+    async function addHost() {
+        const data = {
+            name: document.getElementById('host-name').value,
+            address: document.getElementById('host-address').value,
+            ssh_user: document.getElementById('host-user').value || 'root',
+            ssh_password: document.getElementById('host-password').value || null,
+            ssh_key_path: document.getElementById('host-keypath').value || null,
+            ssh_port: parseInt(document.getElementById('host-port').value) || 22,
+            tags: document.getElementById('host-tags').value.split(',').map(s => s.trim()).filter(Boolean),
+        };
+        if (!data.name || !data.address) { toast('Name and address required'); return; }
+        await api('POST', '/api/hosts', data);
+        closeModal();
+        toast('Host added');
+        showPage('hosts');
+    }
+
+    async function deleteHost(id) {
+        if (!confirm('Delete this host and all its data?')) return;
+        await api('DELETE', `/api/hosts/${id}`);
+        toast('Host deleted');
+        showPage('hosts');
+    }
+
+    async function scanHost(id) {
+        toast('Scan started...');
+        await api('POST', '/api/scan', { host_id: id });
+        // Poll for completion
+        pollScans();
+    }
+
+    async function scanAll() {
+        toast('Scanning all hosts...');
+        await api('POST', '/api/scan');
+        pollScans();
+    }
+
+    async function updateVulnStatus(id, status) {
+        await api('PUT', `/api/vulnerabilities/${id}/status`, { status });
+        toast(`Vulnerability marked as ${status}`);
+    }
+
+    function pollScans() {
+        let polls = 0;
+        const interval = setInterval(async () => {
+            polls++;
+            if (polls > 60) { clearInterval(interval); return; }
+            if (currentPage === 'dashboard') await showPage('dashboard');
+            if (currentPage === 'scans') await showPage('scans');
+            // Check if any scans are still running
+            const scans = await api('GET', '/api/scans?limit=5');
+            const running = scans.some(s => s.status === 'running');
+            if (!running) {
+                clearInterval(interval);
+                toast('Scan complete!');
+                showPage(currentPage);
+            }
+        }, 5000);
+    }
+
+    function closeModal() {
+        document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+    }
+
+    // --- Helpers ---
+    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+    function timeAgo(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+        const s = Math.floor((Date.now() - d) / 1000);
+        if (s < 60) return 'just now';
+        if (s < 3600) return Math.floor(s/60) + 'm ago';
+        if (s < 86400) return Math.floor(s/3600) + 'h ago';
+        return Math.floor(s/86400) + 'd ago';
+    }
+
+    function timeDiff(a, b) {
+        const da = new Date(a.endsWith('Z') ? a : a + 'Z');
+        const db = new Date(b.endsWith('Z') ? b : b + 'Z');
+        const s = Math.floor((db - da) / 1000);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+        return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+    }
+
+    // Init
+    showPage('dashboard');
+    // Auto-refresh dashboard every 30s
+    setInterval(() => { if (currentPage === 'dashboard') showPage('dashboard'); }, 30000);
+    </script>
+</body>
+</html>
