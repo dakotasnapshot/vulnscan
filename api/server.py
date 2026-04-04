@@ -162,7 +162,17 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 limit=limit
             ))
         elif path == "/api/packages":
-        # Discovery endpoints
+            host_id = params.get("host_id")
+            scan_id = params.get("scan_id")
+            if host_id and scan_id:
+                pkgs = db.get_packages(int(host_id), int(scan_id))
+            elif host_id:
+                pkgs = db.get_packages(int(host_id))
+            else:
+                self._send_json({"error": "host_id required"}, 400)
+                return
+            self._send_json(pkgs)
+
         elif path == "/api/discover":
             self._send_json({"error": "Use POST to trigger discovery"}, 405)
         elif path == "/api/discover/results":
