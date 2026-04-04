@@ -254,7 +254,7 @@ Contributions are welcome! Please open an issue or pull request.
 
 ## Author
 
-Dakota Cole — [you@example.com](mailto:you@example.com)
+Dakota Cole
 
 ## Acknowledgments
 
