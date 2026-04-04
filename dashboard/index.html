@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VulnScan — Vulnerability Dashboard</title>
+    <title>VulnScan — Vulnerability Management</title>
     <style>
         :root {
             --bg: #0f1117;
@@ -18,966 +18,960 @@
             --medium: #eab308;
             --low: #3b82f6;
             --success: #22c55e;
+            --danger: #ef4444;
             --radius: 8px;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.5;
-        }
-
-        /* Layout */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
         .app { display: flex; min-height: 100vh; }
-        .sidebar {
-            width: 220px;
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            padding: 20px 0;
-            flex-shrink: 0;
-        }
-        .sidebar h1 {
-            font-size: 18px;
-            padding: 0 20px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .sidebar h1 .icon { font-size: 22px; }
+        .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; flex-shrink: 0; position: fixed; height: 100vh; overflow-y: auto; }
+        .sidebar h1 { font-size: 18px; padding: 0 20px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
         .nav { padding: 12px 0; }
-        .nav a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 20px;
-            color: var(--text-dim);
-            text-decoration: none;
-            font-size: 14px;
-            transition: all 0.15s;
-            cursor: pointer;
-        }
-        .nav a:hover, .nav a.active {
-            color: var(--text);
-            background: var(--surface2);
-        }
+        .nav a { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--text-dim); text-decoration: none; font-size: 14px; transition: all 0.15s; cursor: pointer; }
+        .nav a:hover, .nav a.active { color: var(--text); background: var(--surface2); }
         .nav a.active { border-left: 3px solid var(--accent); }
-        .main { flex: 1; padding: 24px 32px; overflow-x: auto; }
-
-        /* Cards */
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .stat-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px;
-        }
+        .nav .divider { height: 1px; background: var(--border); margin: 8px 20px; }
+        .main { flex: 1; padding: 24px 32px; overflow-x: auto; margin-left: 220px; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .page-header h2 { font-size: 24px; font-weight: 600; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
         .stat-card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
         .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
         .stat-card.critical .value { color: var(--critical); }
         .stat-card.high .value { color: var(--high); }
         .stat-card.medium .value { color: var(--medium); }
         .stat-card.low .value { color: var(--low); }
-
-        /* Tables */
-        .panel {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            margin-bottom: 24px;
-            overflow: hidden;
-        }
-        .panel-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .panel-header h2 { font-size: 16px; font-weight: 600; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th {
-            text-align: left;
-            padding: 10px 16px;
-            color: var(--text-dim);
-            font-weight: 500;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid var(--border);
-        }
-        td {
-            padding: 10px 16px;
-            border-bottom: 1px solid var(--border);
-        }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background: var(--surface2); }
-
-        /* Badges */
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
+        .stat-card.success .value { color: var(--success); }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px; overflow: hidden; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h3 { font-size: 16px; font-weight: 600; }
+        .panel-body { padding: 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 16px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); background: var(--surface2); position: sticky; top: 0; }
+        td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
+        tr:hover td { background: rgba(108,126,225,0.04); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
         .badge.critical { background: rgba(239,68,68,0.15); color: var(--critical); }
         .badge.high { background: rgba(249,115,22,0.15); color: var(--high); }
         .badge.medium { background: rgba(234,179,8,0.15); color: var(--medium); }
         .badge.low { background: rgba(59,130,246,0.15); color: var(--low); }
-        .badge.unknown { background: rgba(139,143,163,0.15); color: var(--text-dim); }
-        .badge.completed { background: rgba(34,197,94,0.15); color: var(--success); }
+        .badge.success { background: rgba(34,197,94,0.15); color: var(--success); }
         .badge.running { background: rgba(108,126,225,0.15); color: var(--accent); }
         .badge.failed { background: rgba(239,68,68,0.15); color: var(--critical); }
-
-        /* Buttons */
-        .btn {
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: 1px solid var(--border);
-            background: var(--surface2);
-            color: var(--text);
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.15s;
-        }
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; text-decoration: none; }
         .btn:hover { background: var(--border); }
-        .btn.primary { background: var(--accent); border-color: var(--accent); }
-        .btn.primary:hover { opacity: 0.9; }
-        .btn.danger { background: var(--critical); border-color: var(--critical); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .btn.primary:hover { opacity: 0.85; }
+        .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+        .btn.danger:hover { opacity: 0.85; }
+        .btn.success { background: var(--success); border-color: var(--success); color: #fff; }
+        .btn.success:hover { opacity: 0.85; }
         .btn.sm { padding: 4px 10px; font-size: 12px; }
-
-        /* Forms */
-        .form-group { margin-bottom: 12px; }
-        .form-group label {
-            display: block;
-            font-size: 12px;
-            color: var(--text-dim);
-            margin-bottom: 4px;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            background: var(--bg);
-            color: var(--text);
-            font-size: 13px;
-        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-group { display: flex; gap: 8px; }
+        input, select, textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 8px 12px; font-size: 13px; width: 100%; }
         input:focus, select:focus { outline: none; border-color: var(--accent); }
-
-        /* Modal */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            width: 480px;
-            max-width: 90vw;
-        }
-        .modal h3 { margin-bottom: 16px; }
-        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-
-        /* Filters */
-        .filters {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .filters select { width: auto; min-width: 120px; }
-
-        /* Host bar chart */
-        .host-bar {
-            display: flex;
-            height: 20px;
-            border-radius: 4px;
-            overflow: hidden;
-            min-width: 120px;
-        }
-        .host-bar .seg { height: 100%; min-width: 2px; }
-        .host-bar .seg.critical { background: var(--critical); }
-        .host-bar .seg.high { background: var(--high); }
-        .host-bar .seg.medium { background: var(--medium); }
-        .host-bar .seg.low { background: var(--low); }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 20px;
-            font-size: 13px;
-            z-index: 200;
-            animation: slideIn 0.3s;
-        }
-        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-        .empty { padding: 40px; text-align: center; color: var(--text-dim); }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar { display: none; }
-            .main { padding: 16px; }
-            .stat-grid { grid-template-columns: repeat(2, 1fr); }
-        }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+        .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+        .modal-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 18px; }
+        .modal-body { padding: 20px; }
+        .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+        .close-btn { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; font-size: 14px; z-index: 200; animation: fadeIn 0.3s; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        .toast.success { border-color: var(--success); }
+        .toast.error { border-color: var(--critical); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .compliance-card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .compliance-card.pass { border-left: 3px solid var(--success); }
+        .compliance-card.fail { border-left: 3px solid var(--critical); }
+        .progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        pre.cmd { background: #000; color: #22c55e; padding: 12px; border-radius: var(--radius); font-family: 'SF Mono', 'Courier New', monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap; margin: 8px 0; }
+        .risk-high { color: var(--critical); }
+        .risk-low { color: var(--success); }
+        .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+        .filter-bar select, .filter-bar input { width: auto; min-width: 150px; }
+        .tag { display: inline-block; padding: 2px 6px; background: var(--surface2); border-radius: 3px; font-size: 11px; margin: 1px 2px; }
     </style>
 </head>
 <body>
-    <div class="app">
-        <aside class="sidebar">
-            <h1><span class="icon">🛡️</span> VulnScan</h1>
-            <nav class="nav">
-                <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
-                <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
-                <a onclick="showPage('discovery')" id="nav-discovery">🔎 Discovery</a>
-                <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
-                <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
-            </nav>
-        </aside>
-
-        <main class="main" id="content">
-            <!-- Content injected by JS -->
-        </main>
-    </div>
-
-    <!-- Add Host Modal -->
-    <div class="modal-overlay" id="addHostModal">
-        <div class="modal">
-            <h3>Add Host</h3>
-            <div class="form-group">
-                <label>Name</label>
-                <input type="text" id="host-name" placeholder="e.g. web-server-1">
-            </div>
-            <div class="form-group">
-                <label>Address (IP or hostname)</label>
-                <input type="text" id="host-address" placeholder="e.g. 192.168.1.10">
-            </div>
-            <div class="form-group">
-                <label>SSH User</label>
-                <input type="text" id="host-user" value="root">
-            </div>
-            <div class="form-group">
-                <label>SSH Password (leave blank for key auth)</label>
-                <input type="password" id="host-password">
-            </div>
-            <div class="form-group">
-                <label>SSH Key Path (leave blank for password auth)</label>
-                <input type="text" id="host-keypath" placeholder="/root/.ssh/id_rsa">
-            </div>
-            <div class="form-group">
-                <label>SSH Port</label>
-                <input type="number" id="host-port" value="22">
-            </div>
-            <div class="form-group">
-                <label>Tags (comma-separated)</label>
-                <input type="text" id="host-tags" placeholder="production, web">
-            </div>
-            <div class="modal-actions">
-                <button class="btn" onclick="closeModal()">Cancel</button>
-                <button class="btn primary" onclick="addHost()">Add Host</button>
-            </div>
+<div class="app">
+    <div class="sidebar">
+        <h1><span class="icon">🛡️</span> VulnScan</h1>
+        <div class="nav">
+            <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
+            <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
+            <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
+            <a onclick="showPage('remediation')" id="nav-remediation">🔧 Remediation</a>
+            <div class="divider"></div>
+            <a onclick="showPage('discovery')" id="nav-discovery">🔎 Discovery</a>
+            <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
+            <a onclick="showPage('compliance')" id="nav-compliance">📋 Compliance</a>
+            <div class="divider"></div>
+            <a onclick="showPage('settings')" id="nav-settings">⚙️ Settings</a>
         </div>
     </div>
+    <div class="main" id="content">Loading...</div>
+</div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
 
-    <script>
-    const API = '';  // Same origin
+<script>
+const API = '';
+let currentPage = 'dashboard';
+let scanningAll = false;
 
-    // State
-    let currentPage = 'dashboard';
-    let dashboardData = null;
+function authHeaders() {
+    const creds = sessionStorage.getItem('vulnscan_auth') || prompt('Enter credentials (user:pass)', 'admin:'); if (creds) sessionStorage.setItem('vulnscan_auth', creds); return { 'Authorization': 'Basic ' + btoa(creds || 'admin:'), 'Content-Type': 'application/json' };
+}
 
-    // --- API Helpers ---
-    async function api(method, path, body = null) {
-        const opts = { method, headers: { 'Content-Type': 'application/json' } };
-        if (body) opts.body = JSON.stringify(body);
-        const res = await fetch(API + path, opts);
-        return res.json();
-    }
+async function api(path, opts = {}) {
+    const r = await fetch(API + path, { headers: authHeaders(), ...opts });
+    if (!r.ok && r.status !== 201) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+}
 
-    function toast(msg) {
-        const t = document.createElement('div');
-        t.className = 'toast';
-        t.textContent = msg;
-        document.body.appendChild(t);
-        setTimeout(() => t.remove(), 3000);
-    }
+async function apiPost(path, data) {
+    return api(path, { method: 'POST', body: JSON.stringify(data) });
+}
 
-    // --- Pages ---
-    async function showPage(page) {
-        currentPage = page;
-        document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
-        document.getElementById('nav-' + page)?.classList.add('active');
+function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    document.getElementById('toast-root').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+}
 
-        const el = document.getElementById('content');
+function showModal(html) {
+    document.getElementById('modal-root').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+}
+
+function closeModal() {
+    document.getElementById('modal-root').innerHTML = '';
+}
+
+function severityBadge(sev) {
+    return `<span class="badge ${sev}">${sev}</span>`;
+}
+
+function timeAgo(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z');
+    const s = Math.floor((Date.now() - d) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
+}
+
+async function showPage(page) {
+    currentPage = page;
+    document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+    const navEl = document.getElementById('nav-' + page);
+    if (navEl) navEl.classList.add('active');
+    const el = document.getElementById('content');
+    try {
         switch (page) {
             case 'dashboard': el.innerHTML = await renderDashboard(); break;
             case 'hosts': el.innerHTML = await renderHosts(); break;
-            case 'discovery': el.innerHTML = await renderDiscovery(); break;
             case 'vulns': el.innerHTML = await renderVulns(); break;
+            case 'remediation': el.innerHTML = await renderRemediation(); break;
+            case 'discovery': el.innerHTML = await renderDiscovery(); break;
             case 'scans': el.innerHTML = await renderScans(); break;
+            case 'compliance': el.innerHTML = await renderCompliance(); break;
+            case 'settings': el.innerHTML = await renderSettings(); break;
         }
+    } catch (e) {
+        el.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Error loading page: ${e.message}</p></div>`;
     }
+}
 
-    // --- Dashboard ---
-    async function renderDashboard() {
-        const d = await api('GET', '/api/dashboard');
-        dashboardData = d;
+// ─── DASHBOARD ───
+async function renderDashboard() {
+    const d = await api('/api/dashboard');
+    const hostsRows = (d.hosts_summary || []).map(h => `
+        <tr>
+            <td><a href="#" onclick="showHostDetail(${h.host_id})" style="color:var(--accent)">${h.name}</a></td>
+            <td>${h.address}</td>
+            <td><span class="badge critical">${h.critical}</span></td>
+            <td><span class="badge high">${h.high}</span></td>
+            <td><span class="badge medium">${h.medium}</span></td>
+            <td><span class="badge low">${h.low}</span></td>
+            <td>${h.total}</td>
+        </tr>
+    `).join('');
 
-        let hostsHtml = '';
-        for (const h of (d.hosts_summary || [])) {
-            const total = h.total || 0;
-            const maxBar = Math.max(total, 1);
-            hostsHtml += `<tr>
-                <td><strong>${esc(h.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${esc(h.address)}</span></td>
-                <td>
-                    <div class="host-bar" title="C:${h.critical} H:${h.high} M:${h.medium} L:${h.low}">
-                        ${h.critical ? `<div class="seg critical" style="width:${h.critical/maxBar*100}%"></div>` : ''}
-                        ${h.high ? `<div class="seg high" style="width:${h.high/maxBar*100}%"></div>` : ''}
-                        ${h.medium ? `<div class="seg medium" style="width:${h.medium/maxBar*100}%"></div>` : ''}
-                        ${h.low ? `<div class="seg low" style="width:${h.low/maxBar*100}%"></div>` : ''}
-                    </div>
-                </td>
-                <td style="text-align:right">${total}</td>
-            </tr>`;
-        }
+    const recentScans = (d.recent_scans || []).slice(0, 5).map(s => `
+        <tr>
+            <td>${s.host_name}</td>
+            <td><span class="badge ${s.status}">${s.status}</span></td>
+            <td>${s.packages_found}</td>
+            <td>${s.vulns_found}</td>
+            <td>${timeAgo(s.started_at)}</td>
+        </tr>
+    `).join('');
 
-        let scansHtml = '';
-        for (const s of (d.recent_scans || []).slice(0, 5)) {
-            scansHtml += `<tr>
-                <td>${esc(s.host_name)}</td>
-                <td><span class="badge ${s.status}">${s.status}</span></td>
-                <td>${s.packages_found}</td>
-                <td>${s.vulns_found}</td>
-                <td>${timeAgo(s.started_at)}</td>
-            </tr>`;
-        }
-
-        return `
-            <h2 style="margin-bottom:20px">Dashboard</h2>
-            <div class="stat-grid">
-                <div class="stat-card"><div class="label">Hosts</div><div class="value">${d.total_hosts}</div></div>
-                <div class="stat-card critical"><div class="label">Critical</div><div class="value">${d.critical}</div></div>
-                <div class="stat-card high"><div class="label">High</div><div class="value">${d.high}</div></div>
-                <div class="stat-card medium"><div class="label">Medium</div><div class="value">${d.medium}</div></div>
-                <div class="stat-card low"><div class="label">Low</div><div class="value">${d.low}</div></div>
-                <div class="stat-card"><div class="label">Total Open</div><div class="value">${d.total_vulns}</div></div>
+    return `
+        <div class="page-header">
+            <h2>Dashboard</h2>
+            <div class="btn-group">
+                <button class="btn primary" onclick="scanAllHosts()" ${scanningAll ? 'disabled' : ''}>
+                    ${scanningAll ? '<span class="spinner"></span> Scanning...' : '🔍 Scan All Hosts'}
+                </button>
             </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                <div class="panel">
-                    <div class="panel-header">
-                        <h2>Hosts Overview</h2>
-                        <button class="btn primary sm" onclick="scanAll()">Scan All</button>
-                    </div>
-                    <table>
-                        <tr><th>Host</th><th>Vulnerabilities</th><th style="text-align:right">Total</th></tr>
-                        ${hostsHtml || '<tr><td colspan="3" class="empty">No hosts configured</td></tr>'}
-                    </table>
-                </div>
-
-                <div class="panel">
-                    <div class="panel-header"><h2>Recent Scans</h2></div>
-                    <table>
-                        <tr><th>Host</th><th>Status</th><th>Pkgs</th><th>Vulns</th><th>When</th></tr>
-                        ${scansHtml || '<tr><td colspan="5" class="empty">No scans yet</td></tr>'}
-                    </table>
-                </div>
-            </div>
-        `;
-    }
-
-    // --- Hosts ---
-    async function renderHosts() {
-        const hosts = await api('GET', '/api/hosts');
-        let rows = '';
-        for (const h of hosts) {
-            rows += `<tr>
-                <td><strong>${esc(h.name)}</strong></td>
-                <td>${esc(h.address)}</td>
-                <td>${esc(h.ssh_user)}</td>
-                <td>${esc(h.os_name || '—')}</td>
-                <td>${h.last_scan ? timeAgo(h.last_scan) : 'Never'}</td>
-                <td>${h.enabled ? '✅' : '❌'}</td>
-                <td>
-                    <button class="btn sm" onclick="scanHost(${h.id})">Scan</button>
-                    <button class="btn sm danger" onclick="deleteHost(${h.id})">Delete</button>
-                </td>
-            </tr>`;
-        }
-        return `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h2>Hosts</h2>
-                <button class="btn primary" onclick="document.getElementById('addHostModal').classList.add('active')">+ Add Host</button>
-            </div>
-            <div class="panel">
-                <table>
-                    <tr><th>Name</th><th>Address</th><th>User</th><th>OS</th><th>Last Scan</th><th>Enabled</th><th>Actions</th></tr>
-                    ${rows || '<tr><td colspan="7" class="empty">No hosts configured yet</td></tr>'}
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card"><div class="label">Total Hosts</div><div class="value">${d.total_hosts}</div></div>
+            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${d.critical}</div></div>
+            <div class="stat-card high"><div class="label">High</div><div class="value">${d.high}</div></div>
+            <div class="stat-card medium"><div class="label">Medium</div><div class="value">${d.medium}</div></div>
+            <div class="stat-card low"><div class="label">Low</div><div class="value">${d.low}</div></div>
+            <div class="stat-card"><div class="label">Total Open</div><div class="value">${d.total_vulns}</div></div>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Hosts by Risk</h3></div>
+            <div class="panel-body">
+                <table><tr><th>Host</th><th>Address</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Total</th></tr>
+                ${hostsRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No hosts configured</td></tr>'}
                 </table>
             </div>
-        `;
-    }
-
-    // --- Discovery ---
-    let discoveryResults = [];
-    let hypervisorResults = [];
-    let credentialProfiles = [];
-
-    async function renderDiscovery() {
-        credentialProfiles = await api('GET', '/api/credentials');
-        const hosts = await api('GET', '/api/hosts');
-        
-        // Build credential profile options
-        let credOpts = '<option value="">-- Select Profile --</option>';
-        for (const p of credentialProfiles) {
-            credOpts += `<option value="${p.id}">${esc(p.name)} (${esc(p.ssh_user)})</option>`;
-        }
-
-        // Build hypervisor host options
-        let hvOpts = '<option value="">-- Select Host --</option>';
-        for (const h of hosts) {
-            if (h.tags && (h.tags.includes('proxmox') || h.tags.includes('esxi'))) {
-                hvOpts += `<option value="${h.id}">${esc(h.name)} (${esc(h.address)})</option>`;
-            }
-        }
-
-        // Build credential profile table
-        let credRows = '';
-        for (const p of credentialProfiles) {
-            const authType = p.ssh_key_path ? 'Key' : 'Password';
-            credRows += `<tr>
-                <td><strong>${esc(p.name)}</strong></td>
-                <td>${esc(p.ssh_user)}</td>
-                <td>${authType}</td>
-                <td>
-                    <button class="btn sm danger" onclick="deleteCredProfile(${p.id})">Delete</button>
-                </td>
-            </tr>`;
-        }
-
-        return `
-            <h2 style="margin-bottom:20px">Discovery</h2>
-
-            <!-- Subnet Discovery -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h3>🌐 Subnet Discovery</h3>
-                </div>
-                <div style="padding:20px">
-                    <div class="form-group">
-                        <label>Subnet (CIDR)</label>
-                        <input type="text" id="disc-subnet" placeholder="192.168.4.0/24" style="width:300px">
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="disc-quick"> Quick scan (ping only)
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>Credential Profile (optional)</label>
-                        <select id="disc-cred-profile" style="width:300px">${credOpts}</select>
-                    </div>
-                    <button class="btn primary" onclick="runSubnetScan()">Scan Subnet</button>
-                    <div id="disc-status" style="margin-top:12px;color:var(--text-dim)"></div>
-                    
-                    <div id="disc-results" style="margin-top:20px"></div>
-                </div>
-            </div>
-
-            <!-- Credential Profiles -->
-            <div class="panel" style="margin-top:20px">
-                <div class="panel-header">
-                    <h3>🔑 Credential Profiles</h3>
-                    <button class="btn primary sm" onclick="showAddCredModal()">+ Add Profile</button>
-                </div>
-                <table>
-                    <tr><th>Name</th><th>Username</th><th>Auth Type</th><th>Actions</th></tr>
-                    ${credRows || '<tr><td colspan="4" class="empty">No credential profiles yet</td></tr>'}
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Recent Scans</h3></div>
+            <div class="panel-body">
+                <table><tr><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>When</th></tr>
+                ${recentScans || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No scans yet</td></tr>'}
                 </table>
             </div>
+        </div>
+    `;
+}
 
-            <!-- Hypervisor Discovery -->
-            <div class="panel" style="margin-top:20px">
-                <div class="panel-header">
-                    <h3>☁️ Hypervisor Discovery</h3>
-                </div>
-                <div style="padding:20px">
-                    <div class="form-group">
-                        <label>Hypervisor Host</label>
-                        <select id="hv-host" style="width:300px">${hvOpts}</select>
-                    </div>
-                    <button class="btn primary" onclick="runHypervisorDiscovery()">Discover VMs/Containers</button>
-                    <div id="hv-status" style="margin-top:12px;color:var(--text-dim)"></div>
-                    
-                    <div id="hv-results" style="margin-top:20px"></div>
-                </div>
-            </div>
-        `;
+async function scanAllHosts() {
+    if (scanningAll) return;
+    scanningAll = true;
+    showPage('dashboard');
+    toast('Scanning all hosts — this may take several minutes...');
+    try {
+        await apiPost('/api/scan', {});
+        // Poll until done
+        let checks = 0;
+        const poll = setInterval(async () => {
+            checks++;
+            if (checks > 120) { clearInterval(poll); scanningAll = false; showPage('dashboard'); return; }
+            try {
+                const scans = await api('/api/scans?limit=1');
+                if (scans.length && scans[0].status !== 'running') {
+                    clearInterval(poll);
+                    scanningAll = false;
+                    toast('Scan complete!');
+                    showPage('dashboard');
+                }
+            } catch(e) {}
+        }, 5000);
+    } catch (e) {
+        scanningAll = false;
+        toast('Scan failed: ' + e.message, 'error');
+        showPage('dashboard');
     }
+}
 
-    async function runSubnetScan() {
-        const subnet = document.getElementById('disc-subnet').value;
-        const quick = document.getElementById('disc-quick').checked;
-        const credProfileId = document.getElementById('disc-cred-profile').value || null;
-        const statusEl = document.getElementById('disc-status');
-        const resultsEl = document.getElementById('disc-results');
-
-        if (!subnet) {
-            toast('Please enter a subnet');
-            return;
-        }
-
-        statusEl.textContent = 'Scanning...';
-        resultsEl.innerHTML = '';
-        discoveryResults = [];
-
-        try {
-            const res = await api('POST', '/api/discover/subnet', {
-                subnet,
-                quick,
-                credential_profile_id: credProfileId
-            });
-            
-            discoveryResults = res.hosts || [];
-            statusEl.textContent = `Found ${discoveryResults.length} hosts`;
-            
-            if (discoveryResults.length > 0) {
-                renderDiscoveryResults();
-            } else {
-                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No hosts found</p>';
-            }
-        } catch (e) {
-            statusEl.textContent = 'Error: ' + e.message;
-        }
-    }
-
-    function renderDiscoveryResults() {
-        const resultsEl = document.getElementById('disc-results');
-        let html = `
-            <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-                <div>
-                    <button class="btn primary sm" onclick="bulkAddSelectedHosts()">Add Selected</button>
-                    <select id="bulk-cred-profile" style="margin-left:8px;width:200px">
-                        <option value="">-- Use Host Credentials --</option>
-                        ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-                    </select>
+// ─── HOSTS ───
+async function renderHosts() {
+    const hosts = await api('/api/hosts');
+    const rows = hosts.map(h => `
+        <tr>
+            <td><a href="#" onclick="showHostDetail(${h.id})" style="color:var(--accent)">${h.name}</a></td>
+            <td>${h.address}</td>
+            <td>${h.os_name || h.os_family || '—'}</td>
+            <td>${h.ssh_user}@:${h.ssh_port}</td>
+            <td>${h.enabled ? '✅' : '❌'}</td>
+            <td>${timeAgo(h.last_scan)}</td>
+            <td>
+                <div class="btn-group">
+                    <button class="btn sm" onclick="scanHost(${h.id})">🔍 Scan</button>
+                    <button class="btn sm" onclick="editHost(${h.id})">✏️</button>
+                    <button class="btn sm danger" onclick="deleteHost(${h.id})">🗑️</button>
                 </div>
+            </td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="page-header">
+            <h2>Hosts (${hosts.length})</h2>
+            <div class="btn-group">
+                <button class="btn primary" onclick="showAddHostModal()">+ Add Host</button>
+                <button class="btn" onclick="showPage('discovery')">🔎 Discover</button>
             </div>
+        </div>
+        <div class="panel"><div class="panel-body">
             <table>
-                <tr>
-                    <th><input type="checkbox" onclick="toggleAllDiscovered(this.checked)"></th>
-                    <th>IP</th>
-                    <th>Hostname</th>
-                    <th>OS</th>
-                    <th>Services</th>
-                    <th>SSH</th>
-                </tr>`;
-        
-        for (let i = 0; i < discoveryResults.length; i++) {
-            const h = discoveryResults[i];
-            const services = Object.keys(h.services || {}).join(', ') || '—';
-            const sshStatus = h.ssh_accessible ? '✅' : '❌';
-            html += `<tr>
-                <td><input type="checkbox" class="disc-check" data-index="${i}"></td>
-                <td>${esc(h.ip)}</td>
-                <td>${esc(h.hostname || '—')}</td>
-                <td>${esc(h.os_name || 'Unknown')}</td>
-                <td>${services}</td>
-                <td>${sshStatus}</td>
-            </tr>`;
-        }
-        
-        html += '</table>';
-        resultsEl.innerHTML = html;
-    }
+                <tr><th>Name</th><th>Address</th><th>OS</th><th>SSH</th><th>Enabled</th><th>Last Scan</th><th>Actions</th></tr>
+                ${rows || '<tr><td colspan="7" class="empty-state">No hosts. Add one or run discovery.</td></tr>'}
+            </table>
+        </div></div>
+    `;
+}
 
-    function toggleAllDiscovered(checked) {
-        document.querySelectorAll('.disc-check').forEach(cb => cb.checked = checked);
-    }
-
-    async function bulkAddSelectedHosts() {
-        const checks = document.querySelectorAll('.disc-check:checked');
-        if (checks.length === 0) {
-            toast('No hosts selected');
-            return;
-        }
-
-        const credProfileId = document.getElementById('bulk-cred-profile').value || null;
-        const hosts = [];
-        
-        checks.forEach(cb => {
-            const idx = parseInt(cb.dataset.index);
-            const h = discoveryResults[idx];
-            hosts.push({
-                name: h.hostname || h.ip,
-                address: h.ip,
-                ssh_user: h.ssh_user || 'root',
-                ssh_password: h.ssh_password,
-                ssh_key_path: h.ssh_key_path,
-                os_family: h.os_family || '',
-                os_name: h.os_name || '',
-                tags: []
-            });
-        });
-
-        try {
-            const res = await api('POST', '/api/hosts/bulk', {
-                hosts,
-                credential_profile_id: credProfileId
-            });
-            toast(`Added ${res.count} hosts`);
-            // Clear selection
-            checks.forEach(cb => cb.checked = false);
-        } catch (e) {
-            toast('Error: ' + e.message);
-        }
-    }
-
-    async function runHypervisorDiscovery() {
-        const hostId = document.getElementById('hv-host').value;
-        const statusEl = document.getElementById('hv-status');
-        const resultsEl = document.getElementById('hv-results');
-
-        if (!hostId) {
-            toast('Please select a hypervisor host');
-            return;
-        }
-
-        statusEl.textContent = 'Discovering...';
-        resultsEl.innerHTML = '';
-
-        try {
-            const res = await api('POST', '/api/discover/hypervisor', { host_id: hostId });
-            hypervisorResults = res.guests || [];
-            statusEl.textContent = `Found ${hypervisorResults.length} guests`;
-            
-            if (hypervisorResults.length > 0) {
-                renderHypervisorResults();
-            } else {
-                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No guests found</p>';
-            }
-        } catch (e) {
-            statusEl.textContent = 'Error: ' + e.message;
-        }
-    }
-
-    function renderHypervisorResults() {
-        const resultsEl = document.getElementById('hv-results');
-        let html = `
-            <div style="margin-bottom:12px">
-                <button class="btn primary sm" onclick="bulkAddSelectedGuests()">Add Selected</button>
-                <select id="guest-cred-profile" style="margin-left:8px;width:200px">
-                    <option value="">-- Use Default Credentials --</option>
-                    ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-                </select>
+function showAddHostModal() {
+    showModal(`
+        <div class="modal-header"><h3>Add Host</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group"><label>Name</label><input id="h-name" placeholder="e.g. web-server-01"></div>
+                <div class="form-group"><label>Address (IP/hostname)</label><input id="h-addr" placeholder="192.168.1.10"></div>
             </div>
-            <table>
-                <tr>
-                    <th><input type="checkbox" onclick="toggleAllGuests(this.checked)"></th>
-                    <th>Name</th>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>IP</th>
-                </tr>`;
-        
-        for (let i = 0; i < hypervisorResults.length; i++) {
-            const g = hypervisorResults[i];
-            html += `<tr>
-                <td><input type="checkbox" class="guest-check" data-index="${i}"></td>
-                <td>${esc(g.name)}</td>
-                <td>${esc(g.vmid || g.id || '—')}</td>
-                <td>${esc(g.status)}</td>
-                <td>${esc(g.ip || '—')}</td>
-            </tr>`;
-        }
-        
-        html += '</table>';
-        resultsEl.innerHTML = html;
-    }
-
-    function toggleAllGuests(checked) {
-        document.querySelectorAll('.guest-check').forEach(cb => cb.checked = checked);
-    }
-
-    async function bulkAddSelectedGuests() {
-        const checks = document.querySelectorAll('.guest-check:checked');
-        if (checks.length === 0) {
-            toast('No guests selected');
-            return;
-        }
-
-        const credProfileId = document.getElementById('guest-cred-profile').value || null;
-        const hosts = [];
-        
-        checks.forEach(cb => {
-            const idx = parseInt(cb.dataset.index);
-            const g = hypervisorResults[idx];
-            if (g.ip) {
-                hosts.push({
-                    name: g.name,
-                    address: g.ip,
-                    tags: ['vm']
-                });
-            }
-        });
-
-        if (hosts.length === 0) {
-            toast('Selected guests have no IP addresses');
-            return;
-        }
-
-        try {
-            const res = await api('POST', '/api/hosts/bulk', {
-                hosts,
-                credential_profile_id: credProfileId
-            });
-            toast(`Added ${res.count} hosts`);
-            checks.forEach(cb => cb.checked = false);
-        } catch (e) {
-            toast('Error: ' + e.message);
-        }
-    }
-
-    function showAddCredModal() {
-        const modal = prompt('Credential Profile Name:');
-        if (!modal) return;
-        const username = prompt('SSH Username:');
-        if (!username) return;
-        const authType = confirm('Use SSH key? (Cancel for password)');
-        
-        let password = null;
-        let keyPath = null;
-        
-        if (authType) {
-            keyPath = prompt('SSH Key Path:', '/root/.ssh/id_rsa');
-        } else {
-            password = prompt('SSH Password:');
-        }
-        
-        api('POST', '/api/credentials', {
-            name: modal,
-            ssh_user: username,
-            ssh_password: password,
-            ssh_key_path: keyPath
-        }).then(() => {
-            toast('Credential profile added');
-            showPage('discovery');
-        }).catch(e => {
-            toast('Error: ' + e.message);
-        });
-    }
-
-    async function deleteCredProfile(id) {
-        if (!confirm('Delete this credential profile?')) return;
-        await api('DELETE', `/api/credentials/${id}`);
-        toast('Credential profile deleted');
-        showPage('discovery');
-    }
-
-    // --- Vulnerabilities ---
-    async function renderVulns(severity = null, hostId = null) {
-        let qp = '?status=open';
-        if (severity) qp += `&severity=${severity}`;
-        if (hostId) qp += `&host_id=${hostId}`;
-        const vulns = await api('GET', '/api/vulnerabilities' + qp);
-        const hosts = await api('GET', '/api/hosts');
-
-        let rows = '';
-        for (const v of vulns) {
-            rows += `<tr>
-                <td><span class="badge ${v.severity}">${v.severity}</span></td>
-                <td><strong>${esc(v.cve_id)}</strong></td>
-                <td>${esc(v.package_name)} <span style="color:var(--text-dim)">${esc(v.package_version)}</span></td>
-                <td>${esc(v.fixed_version || '—')}</td>
-                <td>${esc(v.host_name)}</td>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.summary)}">${esc(v.summary)}</td>
-                <td>
-                    <select class="btn sm" onchange="updateVulnStatus(${v.id}, this.value)" style="width:auto">
-                        <option value="open" ${v.status==='open'?'selected':''}>Open</option>
-                        <option value="acknowledged" ${v.status==='acknowledged'?'selected':''}>Ack</option>
-                        <option value="false_positive" ${v.status==='false_positive'?'selected':''}>FP</option>
-                        <option value="fixed" ${v.status==='fixed'?'selected':''}>Fixed</option>
-                    </select>
-                </td>
-            </tr>`;
-        }
-
-        let hostOpts = '<option value="">All Hosts</option>';
-        for (const h of hosts) hostOpts += `<option value="${h.id}" ${hostId==h.id?'selected':''}>${esc(h.name)}</option>`;
-
-        return `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h2>Vulnerabilities (${vulns.length})</h2>
-                <div class="filters">
-                    <select onchange="showVulnsFiltered()" id="filter-severity">
-                        <option value="">All Severities</option>
-                        <option value="critical" ${severity==='critical'?'selected':''}>Critical</option>
-                        <option value="high" ${severity==='high'?'selected':''}>High</option>
-                        <option value="medium" ${severity==='medium'?'selected':''}>Medium</option>
-                        <option value="low" ${severity==='low'?'selected':''}>Low</option>
-                    </select>
-                    <select onchange="showVulnsFiltered()" id="filter-host">${hostOpts}</select>
-                </div>
+            <div class="form-row">
+                <div class="form-group"><label>SSH User</label><input id="h-user" value="root"></div>
+                <div class="form-group"><label>SSH Port</label><input id="h-port" type="number" value="22"></div>
             </div>
-            <div class="panel">
-                <table>
-                    <tr><th>Severity</th><th>CVE</th><th>Package</th><th>Fix</th><th>Host</th><th>Summary</th><th>Status</th></tr>
-                    ${rows || '<tr><td colspan="7" class="empty">No vulnerabilities found 🎉</td></tr>'}
-                </table>
+            <div class="form-row">
+                <div class="form-group"><label>SSH Password</label><input id="h-pass" type="password" placeholder="(optional)"></div>
+                <div class="form-group"><label>SSH Key Path</label><input id="h-key" placeholder="/root/.ssh/id_rsa (optional)"></div>
             </div>
-        `;
-    }
+            <div class="form-group"><label>Tags (comma-separated)</label><input id="h-tags" placeholder="linux, production"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn primary" onclick="addHost()">Add Host</button>
+        </div>
+    `);
+}
 
-    async function showVulnsFiltered() {
-        const sev = document.getElementById('filter-severity')?.value || null;
-        const host = document.getElementById('filter-host')?.value || null;
-        document.getElementById('content').innerHTML = await renderVulns(sev, host);
-    }
-
-    // --- Scans ---
-    async function renderScans() {
-        const scans = await api('GET', '/api/scans?limit=50');
-        let rows = '';
-        for (const s of scans) {
-            const duration = s.finished_at ? timeDiff(s.started_at, s.finished_at) : '—';
-            rows += `<tr>
-                <td>${s.id}</td>
-                <td>${esc(s.host_name)}</td>
-                <td><span class="badge ${s.status}">${s.status}</span></td>
-                <td>${s.packages_found}</td>
-                <td>${s.vulns_found}</td>
-                <td>${duration}</td>
-                <td>${timeAgo(s.started_at)}</td>
-            </tr>`;
-        }
-        return `
-            <h2 style="margin-bottom:20px">Scan History</h2>
-            <div class="panel">
-                <table>
-                    <tr><th>#</th><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>Duration</th><th>When</th></tr>
-                    ${rows || '<tr><td colspan="7" class="empty">No scans yet</td></tr>'}
-                </table>
-            </div>
-        `;
-    }
-
-    // --- Actions ---
-    async function addHost() {
-        const data = {
-            name: document.getElementById('host-name').value,
-            address: document.getElementById('host-address').value,
-            ssh_user: document.getElementById('host-user').value || 'root',
-            ssh_password: document.getElementById('host-password').value || null,
-            ssh_key_path: document.getElementById('host-keypath').value || null,
-            ssh_port: parseInt(document.getElementById('host-port').value) || 22,
-            tags: document.getElementById('host-tags').value.split(',').map(s => s.trim()).filter(Boolean),
-        };
-        if (!data.name || !data.address) { toast('Name and address required'); return; }
-        await api('POST', '/api/hosts', data);
+async function addHost() {
+    const data = {
+        name: document.getElementById('h-name').value,
+        address: document.getElementById('h-addr').value,
+        ssh_user: document.getElementById('h-user').value || 'root',
+        ssh_port: parseInt(document.getElementById('h-port').value) || 22,
+        ssh_password: document.getElementById('h-pass').value || undefined,
+        ssh_key_path: document.getElementById('h-key').value || undefined,
+        tags: document.getElementById('h-tags').value.split(',').map(t => t.trim()).filter(Boolean)
+    };
+    if (!data.name || !data.address) { toast('Name and address required', 'error'); return; }
+    try {
+        await apiPost('/api/hosts', data);
         closeModal();
         toast('Host added');
         showPage('hosts');
-    }
+    } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
 
-    async function deleteHost(id) {
-        if (!confirm('Delete this host and all its data?')) return;
-        await api('DELETE', `/api/hosts/${id}`);
+async function scanHost(id) {
+    toast('Scan started...');
+    try { await apiPost('/api/scan', { host_id: id }); } catch(e) { toast('Failed: '+e.message, 'error'); }
+}
+
+async function deleteHost(id) {
+    if (!confirm('Delete this host and all its scan data?')) return;
+    try {
+        await fetch(API + `/api/hosts/${id}`, { method: 'DELETE', headers: authHeaders() });
         toast('Host deleted');
         showPage('hosts');
-    }
+    } catch(e) { toast('Failed: '+e.message, 'error'); }
+}
 
-    async function scanHost(id) {
-        toast('Scan started...');
-        await api('POST', '/api/scan', { host_id: id });
-        // Poll for completion
-        pollScans();
-    }
+async function editHost(id) {
+    const h = await api(`/api/hosts/${id}`);
+    showModal(`
+        <div class="modal-header"><h3>Edit Host: ${h.name}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group"><label>Name</label><input id="eh-name" value="${h.name}"></div>
+                <div class="form-group"><label>Address</label><input id="eh-addr" value="${h.address}"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>SSH User</label><input id="eh-user" value="${h.ssh_user}"></div>
+                <div class="form-group"><label>SSH Port</label><input id="eh-port" type="number" value="${h.ssh_port}"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>SSH Password</label><input id="eh-pass" type="password" value="${h.ssh_password||''}"></div>
+                <div class="form-group"><label>SSH Key Path</label><input id="eh-key" value="${h.ssh_key_path||''}"></div>
+            </div>
+            <div class="form-group"><label>Enabled</label><select id="eh-enabled"><option value="1" ${h.enabled?'selected':''}>Yes</option><option value="0" ${h.enabled?'':'selected'}>No</option></select></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn primary" onclick="saveHost(${h.id})">Save</button>
+        </div>
+    `);
+}
 
-    async function scanAll() {
-        toast('Scanning all hosts...');
-        await api('POST', '/api/scan');
-        pollScans();
-    }
+async function saveHost(id) {
+    const data = {
+        name: document.getElementById('eh-name').value,
+        address: document.getElementById('eh-addr').value,
+        ssh_user: document.getElementById('eh-user').value,
+        ssh_port: parseInt(document.getElementById('eh-port').value),
+        ssh_password: document.getElementById('eh-pass').value,
+        ssh_key_path: document.getElementById('eh-key').value,
+        enabled: parseInt(document.getElementById('eh-enabled').value)
+    };
+    try {
+        await fetch(API + `/api/hosts/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) });
+        closeModal();
+        toast('Host updated');
+        showPage('hosts');
+    } catch(e) { toast('Failed: '+e.message, 'error'); }
+}
 
-    async function updateVulnStatus(id, status) {
-        await api('PUT', `/api/vulnerabilities/${id}/status`, { status });
-        toast(`Vulnerability marked as ${status}`);
-    }
+async function showHostDetail(id) {
+    const h = await api(`/api/hosts/${id}`);
+    const vulns = await api(`/api/vulnerabilities?host_id=${id}&limit=100`);
+    const vulnRows = vulns.map(v => `
+        <tr>
+            <td>${severityBadge(v.severity)}</td>
+            <td><a href="#" onclick="showVulnDetail(${v.id})" style="color:var(--accent)">${v.cve_id}</a></td>
+            <td>${v.package_name}</td>
+            <td>${v.package_version}</td>
+            <td>${v.fixed_version || '—'}</td>
+            <td>${v.status}</td>
+            <td><button class="btn sm" onclick="showFixPreview(${v.id})">🔧 Fix</button></td>
+        </tr>
+    `).join('');
+    
+    const el = document.getElementById('content');
+    el.innerHTML = `
+        <div class="page-header">
+            <h2>🖥️ ${h.name} <span style="color:var(--text-dim);font-size:14px">(${h.address})</span></h2>
+            <div class="btn-group">
+                <button class="btn" onclick="scanHost(${h.id})">🔍 Scan Now</button>
+                <button class="btn primary" onclick="remediateHost(${h.id})">🔧 Fix All</button>
+                <button class="btn" onclick="showPage('hosts')">← Back</button>
+            </div>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card"><div class="label">OS</div><div class="value" style="font-size:16px">${h.os_name || h.os_family || 'Unknown'}</div></div>
+            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${vulns.filter(v=>v.severity==='critical').length}</div></div>
+            <div class="stat-card high"><div class="label">High</div><div class="value">${vulns.filter(v=>v.severity==='high').length}</div></div>
+            <div class="stat-card"><div class="label">Total Open</div><div class="value">${vulns.length}</div></div>
+            <div class="stat-card"><div class="label">Last Scan</div><div class="value" style="font-size:14px">${timeAgo(h.last_scan)}</div></div>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Open Vulnerabilities (${vulns.length})</h3></div>
+            <div class="panel-body">
+                <table>
+                    <tr><th>Severity</th><th>CVE</th><th>Package</th><th>Version</th><th>Fix Version</th><th>Status</th><th>Action</th></tr>
+                    ${vulnRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No open vulnerabilities 🎉</td></tr>'}
+                </table>
+            </div>
+        </div>
+    `;
+}
 
-    function pollScans() {
-        let polls = 0;
-        const interval = setInterval(async () => {
-            polls++;
-            if (polls > 60) { clearInterval(interval); return; }
-            if (currentPage === 'dashboard') await showPage('dashboard');
-            if (currentPage === 'scans') await showPage('scans');
-            // Check if any scans are still running
-            const scans = await api('GET', '/api/scans?limit=5');
-            const running = scans.some(s => s.status === 'running');
-            if (!running) {
-                clearInterval(interval);
-                toast('Scan complete!');
-                showPage(currentPage);
-            }
-        }, 5000);
-    }
+// ─── VULNERABILITIES ───
+async function renderVulns() {
+    const vulns = await api('/api/vulnerabilities?limit=500');
+    const rows = vulns.map(v => `
+        <tr>
+            <td>${severityBadge(v.severity)}</td>
+            <td><a href="#" onclick="showVulnDetail(${v.id})" style="color:var(--accent)">${v.cve_id}</a></td>
+            <td>${v.host_name}</td>
+            <td>${v.package_name}</td>
+            <td>${v.package_version}</td>
+            <td>${v.fixed_version || '—'}</td>
+            <td>${timeAgo(v.first_seen)}</td>
+            <td>
+                <div class="btn-group">
+                    <button class="btn sm" onclick="showFixPreview(${v.id})">🔧 Fix</button>
+                    <button class="btn sm" onclick="updateVulnStatus(${v.id},'acknowledged')">👁️</button>
+                    <button class="btn sm" onclick="updateVulnStatus(${v.id},'false_positive')">🚫</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
 
-    function closeModal() {
-        document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-    }
+    return `
+        <div class="page-header">
+            <h2>Vulnerabilities (${vulns.length})</h2>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${vulns.filter(v=>v.severity==='critical').length}</div></div>
+            <div class="stat-card high"><div class="label">High</div><div class="value">${vulns.filter(v=>v.severity==='high').length}</div></div>
+            <div class="stat-card medium"><div class="label">Medium</div><div class="value">${vulns.filter(v=>v.severity==='medium').length}</div></div>
+            <div class="stat-card low"><div class="label">Low</div><div class="value">${vulns.filter(v=>v.severity==='low').length}</div></div>
+        </div>
+        <div class="panel"><div class="panel-body">
+            <table>
+                <tr><th>Severity</th><th>CVE</th><th>Host</th><th>Package</th><th>Version</th><th>Fix</th><th>Age</th><th>Actions</th></tr>
+                ${rows || '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">No open vulnerabilities</td></tr>'}
+            </table>
+        </div></div>
+    `;
+}
 
-    // --- Helpers ---
-    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+async function showVulnDetail(id) {
+    try {
+        const v = await api(`/api/vulnerabilities/${id}`);
+        let refs = '';
+        try { refs = (v.references || []).map(r => `<a href="${r}" target="_blank" style="color:var(--accent);word-break:break-all">${r}</a>`).join('<br>'); } catch(e) {}
+        
+        showModal(`
+            <div class="modal-header"><h3>${v.cve_id}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+            <div class="modal-body">
+                <p>${severityBadge(v.severity)} ${v.cvss_score ? `CVSS: ${v.cvss_score}` : ''}</p>
+                <p style="margin:12px 0;color:var(--text-dim)">${v.summary || 'No description available'}</p>
+                <div class="form-row" style="margin-top:16px">
+                    <div><strong>Package:</strong> ${v.package_name} ${v.package_version}</div>
+                    <div><strong>Fix Version:</strong> ${v.fixed_version || 'N/A'}</div>
+                </div>
+                <div class="form-row">
+                    <div><strong>Host:</strong> ${v.host_name || ''} (${v.address || ''})</div>
+                    <div><strong>Type:</strong> ${v.pkg_type}</div>
+                </div>
+                ${v.fix_command ? `<div style="margin-top:16px"><strong>Fix Command:</strong><pre class="cmd">${v.fix_command}</pre><span class="badge ${v.fix_risk === 'high' ? 'critical' : 'success'}">Risk: ${v.fix_risk}</span></div>` : ''}
+                ${refs ? `<div style="margin-top:16px"><strong>References:</strong><br>${refs}</div>` : ''}
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="updateVulnStatus(${v.id},'false_positive');closeModal()">🚫 False Positive</button>
+                <button class="btn" onclick="updateVulnStatus(${v.id},'acknowledged');closeModal()">👁️ Acknowledge</button>
+                ${v.fix_command ? `<button class="btn primary" onclick="showFixPreview(${v.id});closeModal()">🔧 Remediate</button>` : ''}
+            </div>
+        `);
+    } catch(e) { toast('Failed to load vulnerability details', 'error'); }
+}
 
-    function timeAgo(iso) {
-        if (!iso) return '—';
-        const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-        const s = Math.floor((Date.now() - d) / 1000);
-        if (s < 60) return 'just now';
-        if (s < 3600) return Math.floor(s/60) + 'm ago';
-        if (s < 86400) return Math.floor(s/3600) + 'h ago';
-        return Math.floor(s/86400) + 'd ago';
-    }
+async function updateVulnStatus(id, status) {
+    try {
+        await fetch(API + `/api/vulnerabilities/${id}/status`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ status }) });
+        toast(`Marked as ${status}`);
+        showPage(currentPage);
+    } catch(e) { toast('Failed: '+e.message, 'error'); }
+}
 
-    function timeDiff(a, b) {
-        const da = new Date(a.endsWith('Z') ? a : a + 'Z');
-        const db = new Date(b.endsWith('Z') ? b : b + 'Z');
-        const s = Math.floor((db - da) / 1000);
-        if (s < 60) return s + 's';
-        if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
-        return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
-    }
+// ─── REMEDIATION ───
+async function renderRemediation() {
+    let history = [];
+    try { history = await api('/api/remediate/history?limit=50'); } catch(e) {}
+    
+    const rows = history.map(r => `
+        <tr>
+            <td>${r.host_name || r.host_id}</td>
+            <td><pre class="cmd" style="margin:0;padding:4px 8px">${r.command}</pre></td>
+            <td><span class="badge ${r.dry_run ? 'medium' : 'success'}">${r.dry_run ? 'Dry Run' : 'Executed'}</span></td>
+            <td><span class="badge ${r.success ? 'success' : 'failed'}">${r.success ? 'Success' : 'Failed'}</span></td>
+            <td>${timeAgo(r.timestamp)}</td>
+        </tr>
+    `).join('');
 
-    // Init
-    showPage('dashboard');
-    // Auto-refresh dashboard every 30s
-    setInterval(() => { if (currentPage === 'dashboard') showPage('dashboard'); }, 30000);
-    </script>
+    const hosts = await api('/api/hosts');
+    const hostOpts = hosts.map(h => `<option value="${h.id}">${h.name} (${h.address})</option>`).join('');
+
+    return `
+        <div class="page-header">
+            <h2>Remediation</h2>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Remediate Host</h3></div>
+            <div class="panel-body" style="padding:20px">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Target Host</label>
+                        <select id="rem-host"><option value="">Select a host...</option>${hostOpts}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Severity Filter</label>
+                        <select id="rem-sev">
+                            <option value="">All severities</option>
+                            <option value="critical">Critical only</option>
+                            <option value="high">High only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn" onclick="remediateHostDryRun()">🔍 Preview (Dry Run)</button>
+                    <button class="btn danger" onclick="remediateHostExecute()">⚡ Execute Fixes</button>
+                </div>
+                <div id="rem-results" style="margin-top:16px"></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Remediation History</h3></div>
+            <div class="panel-body">
+                <table>
+                    <tr><th>Host</th><th>Command</th><th>Mode</th><th>Result</th><th>When</th></tr>
+                    ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No remediation history</td></tr>'}
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+async function remediateHostDryRun() {
+    const hostId = document.getElementById('rem-host').value;
+    const sev = document.getElementById('rem-sev').value;
+    if (!hostId) { toast('Select a host', 'error'); return; }
+    const el = document.getElementById('rem-results');
+    el.innerHTML = '<span class="spinner"></span> Running dry run...';
+    try {
+        const results = await apiPost('/api/remediate/host', { host_id: parseInt(hostId), dry_run: true, severity: sev || undefined });
+        if (!results.length) { el.innerHTML = '<p style="color:var(--text-dim)">No fixable vulnerabilities found.</p>'; return; }
+        el.innerHTML = `<h4 style="margin-bottom:12px">${results.length} fixes available:</h4>` +
+            results.map(r => `
+                <div style="margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
+                    <strong>${r.fix_info?.package || 'Unknown'}</strong> → ${r.fix_info?.fixed_version || 'latest'}
+                    <span class="badge ${r.fix_info?.risk === 'high' ? 'critical' : 'success'}">Risk: ${r.fix_info?.risk || '?'}</span>
+                    <pre class="cmd">${r.fix_info?.command || r.command || 'N/A'}</pre>
+                </div>
+            `).join('');
+    } catch(e) { el.innerHTML = `<p style="color:var(--critical)">Error: ${e.message}</p>`; }
+}
+
+async function remediateHostExecute() {
+    const hostId = document.getElementById('rem-host').value;
+    const sev = document.getElementById('rem-sev').value;
+    if (!hostId) { toast('Select a host', 'error'); return; }
+    if (!confirm('⚠️ This will execute package upgrades on the selected host. Proceed?')) return;
+    const el = document.getElementById('rem-results');
+    el.innerHTML = '<span class="spinner"></span> Executing remediation...';
+    try {
+        const results = await apiPost('/api/remediate/host', { host_id: parseInt(hostId), dry_run: false, severity: sev || undefined });
+        const success = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        el.innerHTML = `<h4>${results.length} fixes attempted: ✅ ${success} success, ❌ ${failed} failed</h4>` +
+            results.map(r => `
+                <div style="margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
+                    <span class="badge ${r.success ? 'success' : 'failed'}">${r.success ? 'OK' : 'FAIL'}</span>
+                    <pre class="cmd">${r.command}</pre>
+                    ${r.error ? `<pre class="cmd" style="color:var(--critical)">${r.error}</pre>` : ''}
+                </div>
+            `).join('');
+        toast(`Remediation complete: ${success}/${results.length} succeeded`);
+    } catch(e) { el.innerHTML = `<p style="color:var(--critical)">Error: ${e.message}</p>`; }
+}
+
+async function showFixPreview(vulnId) {
+    try {
+        const v = await apiPost('/api/remediate/preview', { vuln_id: vulnId });
+        showModal(`
+            <div class="modal-header"><h3>🔧 Fix ${v.cve_id}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+            <div class="modal-body">
+                <p><strong>Host:</strong> ${v.host_name} (${v.address})</p>
+                <p><strong>Package:</strong> ${v.package_name} ${v.package_version} → ${v.fixed_version || 'latest'}</p>
+                ${v.fix_command ? `
+                    <p style="margin-top:12px"><strong>Command:</strong></p>
+                    <pre class="cmd">${v.fix_command}</pre>
+                    <p><strong>Strategy:</strong> ${v.fix_strategy} &nbsp; <span class="badge ${v.fix_risk==='high'?'critical':'success'}">Risk: ${v.fix_risk}</span></p>
+                ` : '<p style="color:var(--text-dim)">No automated fix available for this package type.</p>'}
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                ${v.fix_command ? `
+                    <button class="btn" onclick="executeVulnFix(${v.id},true)">🔍 Dry Run</button>
+                    <button class="btn danger" onclick="executeVulnFix(${v.id},false)">⚡ Execute</button>
+                ` : ''}
+            </div>
+        `);
+    } catch(e) { toast('Failed to preview: ' + e.message, 'error'); }
+}
+
+async function executeVulnFix(vulnId, dryRun) {
+    closeModal();
+    toast(dryRun ? 'Running dry run...' : 'Executing fix...');
+    try {
+        const result = await apiPost('/api/remediate/vuln', { vuln_id: vulnId, dry_run: dryRun });
+        if (result.success) {
+            toast(dryRun ? 'Dry run OK — no changes made' : 'Fix applied successfully!');
+        } else {
+            toast('Fix failed: ' + (result.error || 'Unknown error'), 'error');
+        }
+        showPage(currentPage);
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function remediateHost(hostId) {
+    showModal(`
+        <div class="modal-header"><h3>🔧 Remediate All Vulns</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+            <p>This will attempt to fix all open vulnerabilities on this host.</p>
+            <p style="margin:12px 0"><strong>Recommended:</strong> Run a dry run first to preview changes.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn" onclick="closeModal();remediateHostFromDetail(${hostId},true)">🔍 Dry Run</button>
+            <button class="btn danger" onclick="closeModal();remediateHostFromDetail(${hostId},false)">⚡ Execute All</button>
+        </div>
+    `);
+}
+
+async function remediateHostFromDetail(hostId, dryRun) {
+    toast(dryRun ? 'Running dry run...' : 'Executing fixes...');
+    try {
+        const results = await apiPost('/api/remediate/host', { host_id: hostId, dry_run: dryRun });
+        const success = results.filter(r => r.success).length;
+        toast(`${dryRun ? 'Dry run' : 'Remediation'}: ${success}/${results.length} fixes ${dryRun ? 'previewed' : 'applied'}`);
+        showHostDetail(hostId);
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+// ─── DISCOVERY ───
+async function renderDiscovery() {
+    let results = [];
+    try { results = await api('/api/discover/results'); } catch(e) {}
+    
+    const creds = await api('/api/credentials');
+    const credOpts = creds.map(c => `<option value="${c.id}">${c.name} (${c.ssh_user})</option>`).join('');
+
+    const rows = results.map(r => `
+        <tr>
+            <td>${r.address}</td>
+            <td>${r.hostname || '—'}</td>
+            <td>${r.os_guess || '—'}</td>
+            <td>${r.open_ports || '—'}</td>
+            <td>${r.ssh_accessible ? '✅' : '❌'}</td>
+            <td>${r.added_as_host ? '✅' : `<button class="btn sm primary" onclick="addDiscoveredHost('${r.address}','${r.hostname||r.address}')">+ Add</button>`}</td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="page-header"><h2>Network Discovery</h2></div>
+        <div class="panel">
+            <div class="panel-header"><h3>Subnet Scan</h3></div>
+            <div class="panel-body" style="padding:20px">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Subnet (CIDR)</label>
+                        <input id="disc-subnet" placeholder="10.0.0.0/24">
+                    </div>
+                    <div class="form-group">
+                        <label>Credential Profile (optional)</label>
+                        <select id="disc-cred"><option value="">None</option>${credOpts}</select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="disc-quick" checked> Quick scan (ping only, no port scan)</label>
+                </div>
+                <div class="btn-group">
+                    <button class="btn primary" onclick="runDiscovery()">🔎 Scan Subnet</button>
+                </div>
+                <div id="disc-status" style="margin-top:12px"></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <h3>Discovery Results (${results.length})</h3>
+                ${results.length ? `<button class="btn sm primary" onclick="bulkAddDiscovered()">+ Add All SSH-Accessible</button>` : ''}
+            </div>
+            <div class="panel-body">
+                <table>
+                    <tr><th>Address</th><th>Hostname</th><th>OS</th><th>Ports</th><th>SSH</th><th>Action</th></tr>
+                    ${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No discovery results. Run a subnet scan above.</td></tr>'}
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+async function runDiscovery() {
+    const subnet = document.getElementById('disc-subnet').value;
+    if (!subnet) { toast('Enter a subnet', 'error'); return; }
+    const credId = document.getElementById('disc-cred').value;
+    const quick = document.getElementById('disc-quick').checked;
+    const el = document.getElementById('disc-status');
+    el.innerHTML = '<span class="spinner"></span> Scanning subnet... this may take a while';
+    try {
+        const result = await apiPost('/api/discover/subnet', {
+            subnet, quick,
+            credential_profile_id: credId ? parseInt(credId) : undefined
+        });
+        el.innerHTML = `<span class="badge success">✅ Found ${result.hosts?.length || 0} hosts</span>`;
+        toast(`Discovery found ${result.hosts?.length || 0} hosts`);
+        showPage('discovery');
+    } catch(e) { el.innerHTML = `<span class="badge failed">Failed: ${e.message}</span>`; }
+}
+
+async function addDiscoveredHost(addr, name) {
+    try {
+        await apiPost('/api/hosts', { name, address: addr, ssh_user: 'root' });
+        toast(`Added ${addr}`);
+        showPage('discovery');
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function bulkAddDiscovered() {
+    try {
+        const results = await api('/api/discover/results');
+        const sshHosts = results.filter(r => r.ssh_accessible && !r.added_as_host);
+        if (!sshHosts.length) { toast('No new SSH-accessible hosts to add', 'error'); return; }
+        const hosts = sshHosts.map(r => ({ name: r.hostname || r.address, address: r.address }));
+        await apiPost('/api/hosts/bulk', { hosts });
+        toast(`Added ${hosts.length} hosts`);
+        showPage('discovery');
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+// ─── SCAN HISTORY ───
+async function renderScans() {
+    const scans = await api('/api/scans?limit=100');
+    const rows = scans.map(s => `
+        <tr>
+            <td>${s.host_name}</td>
+            <td><span class="badge ${s.status}">${s.status}</span></td>
+            <td>${s.packages_found}</td>
+            <td>${s.vulns_found}</td>
+            <td>${timeAgo(s.started_at)}</td>
+            <td>${s.error || '—'}</td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="page-header"><h2>Scan History</h2></div>
+        <div class="panel"><div class="panel-body">
+            <table>
+                <tr><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>When</th><th>Error</th></tr>
+                ${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No scans yet</td></tr>'}
+            </table>
+        </div></div>
+    `;
+}
+
+// ─── COMPLIANCE ───
+async function renderCompliance() {
+    let comp = {};
+    try { comp = await api('/api/compliance'); } catch(e) { return `<div class="empty-state"><div class="icon">❌</div><p>Failed to load compliance data</p></div>`; }
+    
+    const policyCards = (comp.results || []).map(p => `
+        <div class="compliance-card ${p.compliant ? 'pass' : 'fail'}">
+            <div>
+                <strong>${p.policy_name}</strong>
+                <div style="color:var(--text-dim);font-size:13px;margin-top:4px">${p.message}</div>
+            </div>
+            <div>
+                <span class="badge ${p.compliant ? 'success' : p.policy_severity}">${p.compliant ? 'PASS' : 'FAIL'}</span>
+            </div>
+        </div>
+    `).join('');
+
+    const score = comp.policies_passed || 0;
+    const total = comp.policies_evaluated || 0;
+    const pct = total ? Math.round(score / total * 100) : 0;
+
+    return `
+        <div class="page-header">
+            <h2>Compliance</h2>
+            <button class="btn" onclick="downloadComplianceCSV()">📥 Export CSV</button>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card ${comp.overall_compliant ? 'success' : 'critical'}">
+                <div class="label">Overall Status</div>
+                <div class="value" style="font-size:20px">${comp.overall_compliant ? '✅ Compliant' : '❌ Non-Compliant'}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Score</div>
+                <div class="value">${score}/${total}</div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--critical)'}"></div></div>
+            </div>
+            <div class="stat-card success"><div class="label">Passed</div><div class="value">${score}</div></div>
+            <div class="stat-card critical"><div class="label">Failed</div><div class="value">${total - score}</div></div>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h3>Policy Results</h3></div>
+            <div class="panel-body" style="padding:16px">
+                ${policyCards || '<p style="color:var(--text-dim)">No policies defined</p>'}
+            </div>
+        </div>
+    `;
+}
+
+async function downloadComplianceCSV() {
+    try {
+        const r = await fetch(API + '/api/compliance/report?format=csv', { headers: authHeaders() });
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'compliance_report.csv'; a.click();
+        URL.revokeObjectURL(url);
+    } catch(e) { toast('Failed to export', 'error'); }
+}
+
+// ─── SETTINGS (Credential Profiles) ───
+async function renderSettings() {
+    const creds = await api('/api/credentials');
+    const rows = creds.map(c => `
+        <tr>
+            <td>${c.name}</td>
+            <td>${c.ssh_user}</td>
+            <td>${c.ssh_password ? '••••••' : '—'}</td>
+            <td>${c.ssh_key_path || '—'}</td>
+            <td><button class="btn sm danger" onclick="deleteCredProfile(${c.id})">🗑️</button></td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="page-header">
+            <h2>Settings</h2>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <h3>Credential Profiles</h3>
+                <button class="btn sm primary" onclick="showAddCredModal()">+ Add Profile</button>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <tr><th>Name</th><th>SSH User</th><th>Password</th><th>Key Path</th><th>Action</th></tr>
+                    ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No credential profiles. Add one for easy host provisioning.</td></tr>'}
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function showAddCredModal() {
+    showModal(`
+        <div class="modal-header"><h3>Add Credential Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-group"><label>Profile Name</label><input id="cp-name" placeholder="e.g. proxmox-root"></div>
+            <div class="form-row">
+                <div class="form-group"><label>SSH User</label><input id="cp-user" value="root"></div>
+                <div class="form-group"><label>SSH Password</label><input id="cp-pass" type="password"></div>
+            </div>
+            <div class="form-group"><label>SSH Key Path (optional)</label><input id="cp-key" placeholder="/root/.ssh/id_rsa"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn primary" onclick="addCredProfile()">Add</button>
+        </div>
+    `);
+}
+
+async function addCredProfile() {
+    const data = {
+        name: document.getElementById('cp-name').value,
+        ssh_user: document.getElementById('cp-user').value,
+        ssh_password: document.getElementById('cp-pass').value || undefined,
+        ssh_key_path: document.getElementById('cp-key').value || undefined
+    };
+    if (!data.name || !data.ssh_user) { toast('Name and user required', 'error'); return; }
+    try {
+        await apiPost('/api/credentials', data);
+        closeModal();
+        toast('Credential profile added');
+        showPage('settings');
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function deleteCredProfile(id) {
+    if (!confirm('Delete this credential profile?')) return;
+    try {
+        await fetch(API + `/api/credentials/${id}`, { method: 'DELETE', headers: authHeaders() });
+        toast('Deleted');
+        showPage('settings');
+    } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+// ─── INIT ───
+showPage('dashboard');
+setInterval(() => { if (currentPage === 'dashboard') showPage('dashboard'); }, 30000);
+</script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+import os
 """VulnScan REST API server.
 
 Lightweight HTTP API built on Python's http.server — no external dependencies.
@@ -25,7 +26,7 @@ DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"
 
 # Authentication credentials
 AUTH_USERNAME = "admin"
-AUTH_PASSWORD = "changeme"
+AUTH_PASSWORD = os.environ.get("VULNSCAN_PASSWORD", "changeme")
 
 
 class VulnScanHandler(BaseHTTPRequestHandler):
@@ -357,18 +358,10 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                         'key_path': profile.get('ssh_key_path')
                     }]
             
-            # Run discovery in background
-            def _discover():
-                from scanner.collectors.network_discovery import scan_subnet
-                results = scan_subnet(subnet, credentials=credentials, quick=quick)
-                logger.info(f"Discovery completed: {len(results)} hosts found")
-            
-            t = threading.Thread(target=_discover, daemon=True)
-            t.start()
-            
-            # Also run synchronously for immediate results
+            # Run discovery synchronously
             from scanner.collectors.network_discovery import scan_subnet
             results = scan_subnet(subnet, credentials=credentials, quick=quick)
+            logger.info(f"Discovery completed: {len(results)} hosts found")
             self._send_json({"status": "completed", "hosts": results})
 
         elif path == "/api/discover/hypervisor":
@@ -392,6 +385,49 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "completed", "guests": result['guests']})
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
+
+        elif path == "/api/remediate/vuln":
+            # Remediate a single vulnerability
+            data = self._read_body()
+            vuln_id = data.get("vuln_id")
+            dry_run = data.get("dry_run", True)
+            if not vuln_id:
+                self._send_json({"error": "vuln_id required"}, 400)
+                return
+            from scanner import remediation
+            result = remediation.remediate_vulnerability(int(vuln_id), dry_run=dry_run)
+            self._send_json(result)
+
+        elif path == "/api/remediate/host":
+            # Remediate all vulns on a host
+            data = self._read_body()
+            host_id = data.get("host_id")
+            dry_run = data.get("dry_run", True)
+            severity = data.get("severity")
+            if not host_id:
+                self._send_json({"error": "host_id required"}, 400)
+                return
+            from scanner import remediation
+            results = remediation.remediate_host(int(host_id), dry_run=dry_run, severity_filter=severity)
+            self._send_json(results)
+
+        elif path == "/api/remediate/preview":
+            # Preview fix for a vulnerability (no execution)
+            data = self._read_body()
+            vuln_id = data.get("vuln_id")
+            if not vuln_id:
+                self._send_json({"error": "vuln_id required"}, 400)
+                return
+            vuln = db.get_vulnerability_with_fix(int(vuln_id))
+            if vuln:
+                self._send_json(vuln)
+            else:
+                self._send_json({"error": "Vulnerability not found"}, 404)
+
+        elif path == "/api/compliance/summary":
+            from scanner import compliance
+            result = compliance.get_compliance_summary()
+            self._send_json(result)
 
         else:
             self.send_error(404)

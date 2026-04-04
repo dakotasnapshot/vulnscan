@@ -80,6 +80,30 @@ CREATE TABLE IF NOT EXISTS credential_profiles (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS remediation_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id INTEGER,
+    vuln_id INTEGER,
+    command TEXT NOT NULL,
+    dry_run INTEGER DEFAULT 1,
+    success INTEGER DEFAULT 0,
+    output TEXT DEFAULT '',
+    error TEXT DEFAULT '',
+    timestamp TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS discovery_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    address TEXT NOT NULL,
+    hostname TEXT DEFAULT '',
+    os_guess TEXT DEFAULT '',
+    open_ports TEXT DEFAULT '',
+    ssh_accessible INTEGER DEFAULT 0,
+    discovered_at TEXT DEFAULT (datetime('now')),
+    added_as_host INTEGER DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_vulns_host ON vulnerabilities(host_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_cve ON vulnerabilities(cve_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vulnerabilities(severity);
