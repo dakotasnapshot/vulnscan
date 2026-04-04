@@ -75,14 +75,14 @@ python3 api/server.py 8080
 ```
 
 Access the web dashboard at `http://localhost:8080`  
-Default credentials: `admin` / `VulnScan2026!`
+Default credentials: `admin` / `changeme`
 
 ## Quick Start
 
 ### Add a host
 
 ```bash
-curl -u admin:VulnScan2026! -X POST http://localhost:8080/api/hosts \
+curl -u admin:changeme -X POST http://localhost:8080/api/hosts \
   -H "Content-Type: application/json" \
   -d '{
     "name": "webserver",
@@ -96,7 +96,7 @@ curl -u admin:VulnScan2026! -X POST http://localhost:8080/api/hosts \
 ### Scan a host
 
 ```bash
-curl -u admin:VulnScan2026! -X POST http://localhost:8080/api/scan \
+curl -u admin:changeme -X POST http://localhost:8080/api/scan \
   -H "Content-Type: application/json" \
   -d '{"host_id": 1}'
 ```
@@ -104,7 +104,7 @@ curl -u admin:VulnScan2026! -X POST http://localhost:8080/api/scan \
 ### View vulnerabilities
 
 ```bash
-curl -u admin:VulnScan2026! http://localhost:8080/api/vulnerabilities
+curl -u admin:changeme http://localhost:8080/api/vulnerabilities
 ```
 
 ## API Endpoints
@@ -254,7 +254,7 @@ Contributions are welcome! Please open an issue or pull request.
 
 ## Author
 
-Dakota Cole — [dakota@hawthornmail.com](mailto:dakota@hawthornmail.com)
+Dakota Cole — [you@example.com](mailto:you@example.com)
 
 ## Acknowledgments
 

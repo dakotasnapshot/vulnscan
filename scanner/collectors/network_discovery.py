@@ -50,7 +50,7 @@ def detect_os_via_ssh(ip: str, port: int = 22, credentials: list[dict] = None) -
     """
     if not credentials:
         credentials = [
-            {'username': 'root', 'password': 'MellowYellow'},
+            {'username': 'root', 'password': 'changeme'},
         ]
     
     for cred in credentials:

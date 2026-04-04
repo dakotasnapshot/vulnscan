@@ -189,7 +189,7 @@ Policy (Base Class)
 **Purpose**: Find hosts on a subnet
 
 **Process**:
-1. Parse CIDR notation (e.g., 192.168.4.0/24)
+1. Parse CIDR notation (e.g., 10.0.0.0/24)
 2. For each IP:
    - Ping test
    - TCP port scan (SSH, HTTP, HTTPS, Proxmox, RDP, VNC)

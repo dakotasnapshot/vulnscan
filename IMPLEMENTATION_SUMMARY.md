@@ -6,11 +6,11 @@
 **Status**: COMPLETE
 
 Added three Proxmox hosts to the database:
-- mm18c1 (192.168.4.11) — Host ID 8
-- mm18c2 (192.168.4.12) — Host ID 9
-- mm18c3 (192.168.4.13) — Host ID 10
+- mm18c1 (10.0.0.11) — Host ID 8
+- mm18c2 (10.0.0.12) — Host ID 9
+- mm18c3 (10.0.0.13) — Host ID 10
 
-Credentials: root/MellowYellow  
+Credentials: root/changeme  
 Tags: local,proxmox
 
 ### ✅ Task 2: Hypervisor VM/Container Discovery
@@ -55,7 +55,7 @@ Created `scanner/collectors/network_discovery.py` with:
 - Support for credential profiles (try multiple creds)
 
 **Features:**
-- Subnet support (CIDR notation: 192.168.4.0/24)
+- Subnet support (CIDR notation: 10.0.0.0/24)
 - Quick mode (ping only) vs full scan
 - Hostname resolution via reverse DNS
 - SSH accessibility testing
@@ -212,7 +212,7 @@ from scanner.collectors import hypervisor, network_discovery
 
 # Discovery
 result = hypervisor.discover_all_guests(host)
-hosts = network_discovery.scan_subnet("192.168.4.0/24")
+hosts = network_discovery.scan_subnet("10.0.0.0/24")
 
 # Remediation
 fix = remediation.remediate_vulnerability(vuln_id, dry_run=True)
@@ -308,7 +308,7 @@ vulnscan/
 
 2. **Live Testing:**
    - Test hypervisor discovery on mm18c1, mm18c2, mm18c3
-   - Test network discovery on 192.168.4.0/24
+   - Test network discovery on 10.0.0.0/24
    - Test remediation (dry-run mode first!)
    - Verify compliance reports
 

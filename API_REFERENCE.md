@@ -193,7 +193,7 @@ Trigger discovery
 ```json
 {
   "type": "subnet",
-  "subnet": "192.168.4.0/24",
+  "subnet": "10.0.0.0/24",
   "quick": false,
   "credentials": [
     {"username": "root", "password": "secret"}
@@ -214,7 +214,7 @@ Trigger discovery
 {
   "status": "started",
   "type": "subnet",
-  "subnet": "192.168.4.0/24"
+  "subnet": "10.0.0.0/24"
 }
 ```
 
@@ -226,7 +226,7 @@ Get discovery results
 [
   {
     "id": 1,
-    "ip": "192.168.4.65",
+    "ip": "10.0.0.65",
     "hostname": "homeassistant.local",
     "os_family": "linux",
     "os_name": "Debian 11",
@@ -455,7 +455,7 @@ curl -u admin:changeme http://localhost:8080/api/compliance
 # 8. Discover network
 curl -u admin:changeme -X POST http://localhost:8080/api/discover \
   -H "Content-Type: application/json" \
-  -d '{"type": "subnet", "subnet": "192.168.4.0/24", "quick": true}'
+  -d '{"type": "subnet", "subnet": "10.0.0.0/24", "quick": true}'
 
 # 9. View discovery results
 curl -u admin:changeme http://localhost:8080/api/discover/results
