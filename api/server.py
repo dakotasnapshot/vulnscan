@@ -173,6 +173,15 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(pkgs)
 
+        elif path == "/api/credentials":
+            self._send_json(db.list_credential_profiles())
+        elif path.startswith("/api/credentials/") and path.count("/") == 3:
+            profile_id = int(path.split("/")[3])
+            profile = db.get_credential_profile(profile_id)
+            if profile:
+                self._send_json(profile)
+            else:
+                self._send_json({"error": "Credential profile not found"}, 404)
         elif path == "/api/discover":
             self._send_json({"error": "Use POST to trigger discovery"}, 405)
         elif path == "/api/discover/results":
@@ -287,6 +296,103 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 results = scan_all()
                 self._send_json(results)
 
+        elif path == "/api/hosts/bulk":
+            # Bulk add hosts
+            data = self._read_body()
+            hosts = data.get("hosts", [])
+            credential_profile_id = data.get("credential_profile_id")
+            
+            if not hosts:
+                self._send_json({"error": "hosts array required"}, 400)
+                return
+            
+            try:
+                host_ids = db.bulk_add_hosts(hosts, credential_profile_id)
+                self._send_json({
+                    "status": "created",
+                    "count": len(host_ids),
+                    "host_ids": host_ids
+                }, 201)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 400)
+
+        elif path == "/api/credentials":
+            # Create credential profile
+            data = self._read_body()
+            required = ["name", "ssh_user"]
+            if not all(k in data for k in required):
+                self._send_json({"error": "name and ssh_user required"}, 400)
+                return
+            
+            try:
+                profile_id = db.add_credential_profile(
+                    name=data["name"],
+                    ssh_user=data["ssh_user"],
+                    ssh_password=data.get("ssh_password"),
+                    ssh_key_path=data.get("ssh_key_path")
+                )
+                self._send_json({"id": profile_id, "status": "created"}, 201)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 400)
+
+        elif path == "/api/discover/subnet":
+            # Subnet discovery
+            data = self._read_body()
+            subnet = data.get("subnet")
+            quick = data.get("quick", False)
+            credential_profile_id = data.get("credential_profile_id")
+            
+            if not subnet:
+                self._send_json({"error": "subnet required"}, 400)
+                return
+            
+            # Get credentials if profile specified
+            credentials = None
+            if credential_profile_id:
+                profile = db.get_credential_profile(int(credential_profile_id))
+                if profile:
+                    credentials = [{
+                        'username': profile['ssh_user'],
+                        'password': profile.get('ssh_password'),
+                        'key_path': profile.get('ssh_key_path')
+                    }]
+            
+            # Run discovery in background
+            def _discover():
+                from scanner.collectors.network_discovery import scan_subnet
+                results = scan_subnet(subnet, credentials=credentials, quick=quick)
+                logger.info(f"Discovery completed: {len(results)} hosts found")
+            
+            t = threading.Thread(target=_discover, daemon=True)
+            t.start()
+            
+            # Also run synchronously for immediate results
+            from scanner.collectors.network_discovery import scan_subnet
+            results = scan_subnet(subnet, credentials=credentials, quick=quick)
+            self._send_json({"status": "completed", "hosts": results})
+
+        elif path == "/api/discover/hypervisor":
+            # Hypervisor discovery
+            data = self._read_body()
+            host_id = data.get("host_id")
+            
+            if not host_id:
+                self._send_json({"error": "host_id required"}, 400)
+                return
+            
+            from scanner.collectors.hypervisor import discover_all_guests
+            host = db.get_host(int(host_id))
+            
+            if not host:
+                self._send_json({"error": "Host not found"}, 404)
+                return
+            
+            try:
+                result = discover_all_guests(host)
+                self._send_json({"status": "completed", "guests": result['guests']})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
         else:
             self.send_error(404)
 
@@ -333,6 +439,10 @@ class VulnScanHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/hosts/") and path.count("/") == 3:
             host_id = int(path.split("/")[3])
             db.delete_host(host_id)
+            self._send_json({"status": "deleted"})
+        elif path.startswith("/api/credentials/") and path.count("/") == 3:
+            profile_id = int(path.split("/")[3])
+            db.delete_credential_profile(profile_id)
             self._send_json({"status": "deleted"})
         else:
             self.send_error(404)

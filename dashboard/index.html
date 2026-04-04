@@ -255,6 +255,7 @@
             <nav class="nav">
                 <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
                 <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
+                <a onclick="showPage('discovery')" id="nav-discovery">🔎 Discovery</a>
                 <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
                 <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
             </nav>
@@ -337,6 +338,7 @@
         switch (page) {
             case 'dashboard': el.innerHTML = await renderDashboard(); break;
             case 'hosts': el.innerHTML = await renderHosts(); break;
+            case 'discovery': el.innerHTML = await renderDiscovery(); break;
             case 'vulns': el.innerHTML = await renderVulns(); break;
             case 'scans': el.innerHTML = await renderScans(); break;
         }
@@ -440,6 +442,362 @@
                 </table>
             </div>
         `;
+    }
+
+    // --- Discovery ---
+    let discoveryResults = [];
+    let hypervisorResults = [];
+    let credentialProfiles = [];
+
+    async function renderDiscovery() {
+        credentialProfiles = await api('GET', '/api/credentials');
+        const hosts = await api('GET', '/api/hosts');
+        
+        // Build credential profile options
+        let credOpts = '<option value="">-- Select Profile --</option>';
+        for (const p of credentialProfiles) {
+            credOpts += `<option value="${p.id}">${esc(p.name)} (${esc(p.ssh_user)})</option>`;
+        }
+
+        // Build hypervisor host options
+        let hvOpts = '<option value="">-- Select Host --</option>';
+        for (const h of hosts) {
+            if (h.tags && (h.tags.includes('proxmox') || h.tags.includes('esxi'))) {
+                hvOpts += `<option value="${h.id}">${esc(h.name)} (${esc(h.address)})</option>`;
+            }
+        }
+
+        // Build credential profile table
+        let credRows = '';
+        for (const p of credentialProfiles) {
+            const authType = p.ssh_key_path ? 'Key' : 'Password';
+            credRows += `<tr>
+                <td><strong>${esc(p.name)}</strong></td>
+                <td>${esc(p.ssh_user)}</td>
+                <td>${authType}</td>
+                <td>
+                    <button class="btn sm danger" onclick="deleteCredProfile(${p.id})">Delete</button>
+                </td>
+            </tr>`;
+        }
+
+        return `
+            <h2 style="margin-bottom:20px">Discovery</h2>
+
+            <!-- Subnet Discovery -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>🌐 Subnet Discovery</h3>
+                </div>
+                <div style="padding:20px">
+                    <div class="form-group">
+                        <label>Subnet (CIDR)</label>
+                        <input type="text" id="disc-subnet" placeholder="192.168.4.0/24" style="width:300px">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="disc-quick"> Quick scan (ping only)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Credential Profile (optional)</label>
+                        <select id="disc-cred-profile" style="width:300px">${credOpts}</select>
+                    </div>
+                    <button class="btn primary" onclick="runSubnetScan()">Scan Subnet</button>
+                    <div id="disc-status" style="margin-top:12px;color:var(--text-dim)"></div>
+                    
+                    <div id="disc-results" style="margin-top:20px"></div>
+                </div>
+            </div>
+
+            <!-- Credential Profiles -->
+            <div class="panel" style="margin-top:20px">
+                <div class="panel-header">
+                    <h3>🔑 Credential Profiles</h3>
+                    <button class="btn primary sm" onclick="showAddCredModal()">+ Add Profile</button>
+                </div>
+                <table>
+                    <tr><th>Name</th><th>Username</th><th>Auth Type</th><th>Actions</th></tr>
+                    ${credRows || '<tr><td colspan="4" class="empty">No credential profiles yet</td></tr>'}
+                </table>
+            </div>
+
+            <!-- Hypervisor Discovery -->
+            <div class="panel" style="margin-top:20px">
+                <div class="panel-header">
+                    <h3>☁️ Hypervisor Discovery</h3>
+                </div>
+                <div style="padding:20px">
+                    <div class="form-group">
+                        <label>Hypervisor Host</label>
+                        <select id="hv-host" style="width:300px">${hvOpts}</select>
+                    </div>
+                    <button class="btn primary" onclick="runHypervisorDiscovery()">Discover VMs/Containers</button>
+                    <div id="hv-status" style="margin-top:12px;color:var(--text-dim)"></div>
+                    
+                    <div id="hv-results" style="margin-top:20px"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function runSubnetScan() {
+        const subnet = document.getElementById('disc-subnet').value;
+        const quick = document.getElementById('disc-quick').checked;
+        const credProfileId = document.getElementById('disc-cred-profile').value || null;
+        const statusEl = document.getElementById('disc-status');
+        const resultsEl = document.getElementById('disc-results');
+
+        if (!subnet) {
+            toast('Please enter a subnet');
+            return;
+        }
+
+        statusEl.textContent = 'Scanning...';
+        resultsEl.innerHTML = '';
+        discoveryResults = [];
+
+        try {
+            const res = await api('POST', '/api/discover/subnet', {
+                subnet,
+                quick,
+                credential_profile_id: credProfileId
+            });
+            
+            discoveryResults = res.hosts || [];
+            statusEl.textContent = `Found ${discoveryResults.length} hosts`;
+            
+            if (discoveryResults.length > 0) {
+                renderDiscoveryResults();
+            } else {
+                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No hosts found</p>';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    function renderDiscoveryResults() {
+        const resultsEl = document.getElementById('disc-results');
+        let html = `
+            <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <button class="btn primary sm" onclick="bulkAddSelectedHosts()">Add Selected</button>
+                    <select id="bulk-cred-profile" style="margin-left:8px;width:200px">
+                        <option value="">-- Use Host Credentials --</option>
+                        ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <table>
+                <tr>
+                    <th><input type="checkbox" onclick="toggleAllDiscovered(this.checked)"></th>
+                    <th>IP</th>
+                    <th>Hostname</th>
+                    <th>OS</th>
+                    <th>Services</th>
+                    <th>SSH</th>
+                </tr>`;
+        
+        for (let i = 0; i < discoveryResults.length; i++) {
+            const h = discoveryResults[i];
+            const services = Object.keys(h.services || {}).join(', ') || '—';
+            const sshStatus = h.ssh_accessible ? '✅' : '❌';
+            html += `<tr>
+                <td><input type="checkbox" class="disc-check" data-index="${i}"></td>
+                <td>${esc(h.ip)}</td>
+                <td>${esc(h.hostname || '—')}</td>
+                <td>${esc(h.os_name || 'Unknown')}</td>
+                <td>${services}</td>
+                <td>${sshStatus}</td>
+            </tr>`;
+        }
+        
+        html += '</table>';
+        resultsEl.innerHTML = html;
+    }
+
+    function toggleAllDiscovered(checked) {
+        document.querySelectorAll('.disc-check').forEach(cb => cb.checked = checked);
+    }
+
+    async function bulkAddSelectedHosts() {
+        const checks = document.querySelectorAll('.disc-check:checked');
+        if (checks.length === 0) {
+            toast('No hosts selected');
+            return;
+        }
+
+        const credProfileId = document.getElementById('bulk-cred-profile').value || null;
+        const hosts = [];
+        
+        checks.forEach(cb => {
+            const idx = parseInt(cb.dataset.index);
+            const h = discoveryResults[idx];
+            hosts.push({
+                name: h.hostname || h.ip,
+                address: h.ip,
+                ssh_user: h.ssh_user || 'root',
+                ssh_password: h.ssh_password,
+                ssh_key_path: h.ssh_key_path,
+                os_family: h.os_family || '',
+                os_name: h.os_name || '',
+                tags: []
+            });
+        });
+
+        try {
+            const res = await api('POST', '/api/hosts/bulk', {
+                hosts,
+                credential_profile_id: credProfileId
+            });
+            toast(`Added ${res.count} hosts`);
+            // Clear selection
+            checks.forEach(cb => cb.checked = false);
+        } catch (e) {
+            toast('Error: ' + e.message);
+        }
+    }
+
+    async function runHypervisorDiscovery() {
+        const hostId = document.getElementById('hv-host').value;
+        const statusEl = document.getElementById('hv-status');
+        const resultsEl = document.getElementById('hv-results');
+
+        if (!hostId) {
+            toast('Please select a hypervisor host');
+            return;
+        }
+
+        statusEl.textContent = 'Discovering...';
+        resultsEl.innerHTML = '';
+
+        try {
+            const res = await api('POST', '/api/discover/hypervisor', { host_id: hostId });
+            hypervisorResults = res.guests || [];
+            statusEl.textContent = `Found ${hypervisorResults.length} guests`;
+            
+            if (hypervisorResults.length > 0) {
+                renderHypervisorResults();
+            } else {
+                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No guests found</p>';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    function renderHypervisorResults() {
+        const resultsEl = document.getElementById('hv-results');
+        let html = `
+            <div style="margin-bottom:12px">
+                <button class="btn primary sm" onclick="bulkAddSelectedGuests()">Add Selected</button>
+                <select id="guest-cred-profile" style="margin-left:8px;width:200px">
+                    <option value="">-- Use Default Credentials --</option>
+                    ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+                </select>
+            </div>
+            <table>
+                <tr>
+                    <th><input type="checkbox" onclick="toggleAllGuests(this.checked)"></th>
+                    <th>Name</th>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                </tr>`;
+        
+        for (let i = 0; i < hypervisorResults.length; i++) {
+            const g = hypervisorResults[i];
+            html += `<tr>
+                <td><input type="checkbox" class="guest-check" data-index="${i}"></td>
+                <td>${esc(g.name)}</td>
+                <td>${esc(g.vmid || g.id || '—')}</td>
+                <td>${esc(g.status)}</td>
+                <td>${esc(g.ip || '—')}</td>
+            </tr>`;
+        }
+        
+        html += '</table>';
+        resultsEl.innerHTML = html;
+    }
+
+    function toggleAllGuests(checked) {
+        document.querySelectorAll('.guest-check').forEach(cb => cb.checked = checked);
+    }
+
+    async function bulkAddSelectedGuests() {
+        const checks = document.querySelectorAll('.guest-check:checked');
+        if (checks.length === 0) {
+            toast('No guests selected');
+            return;
+        }
+
+        const credProfileId = document.getElementById('guest-cred-profile').value || null;
+        const hosts = [];
+        
+        checks.forEach(cb => {
+            const idx = parseInt(cb.dataset.index);
+            const g = hypervisorResults[idx];
+            if (g.ip) {
+                hosts.push({
+                    name: g.name,
+                    address: g.ip,
+                    tags: ['vm']
+                });
+            }
+        });
+
+        if (hosts.length === 0) {
+            toast('Selected guests have no IP addresses');
+            return;
+        }
+
+        try {
+            const res = await api('POST', '/api/hosts/bulk', {
+                hosts,
+                credential_profile_id: credProfileId
+            });
+            toast(`Added ${res.count} hosts`);
+            checks.forEach(cb => cb.checked = false);
+        } catch (e) {
+            toast('Error: ' + e.message);
+        }
+    }
+
+    function showAddCredModal() {
+        const modal = prompt('Credential Profile Name:');
+        if (!modal) return;
+        const username = prompt('SSH Username:');
+        if (!username) return;
+        const authType = confirm('Use SSH key? (Cancel for password)');
+        
+        let password = null;
+        let keyPath = null;
+        
+        if (authType) {
+            keyPath = prompt('SSH Key Path:', '/root/.ssh/id_rsa');
+        } else {
+            password = prompt('SSH Password:');
+        }
+        
+        api('POST', '/api/credentials', {
+            name: modal,
+            ssh_user: username,
+            ssh_password: password,
+            ssh_key_path: keyPath
+        }).then(() => {
+            toast('Credential profile added');
+            showPage('discovery');
+        }).catch(e => {
+            toast('Error: ' + e.message);
+        });
+    }
+
+    async function deleteCredProfile(id) {
+        if (!confirm('Delete this credential profile?')) return;
+        await api('DELETE', `/api/credentials/${id}`);
+        toast('Credential profile deleted');
+        showPage('discovery');
     }
 
     // --- Vulnerabilities ---

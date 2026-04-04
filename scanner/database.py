@@ -71,6 +71,15 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
     FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS credential_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    ssh_user TEXT NOT NULL,
+    ssh_password TEXT,
+    ssh_key_path TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_vulns_host ON vulnerabilities(host_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_cve ON vulnerabilities(cve_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vulnerabilities(severity);
@@ -155,6 +164,63 @@ def delete_host(host_id: int):
     conn.execute("DELETE FROM hosts WHERE id = ?", (host_id,))
     conn.commit()
     conn.close()
+
+
+def bulk_add_hosts(hosts: list[dict], credential_profile_id: int = None) -> list[int]:
+    """Add multiple hosts at once, optionally using a credential profile.
+    
+    Args:
+        hosts: List of host dicts with name, address, etc.
+        credential_profile_id: If provided, use this profile's credentials as defaults
+    
+    Returns:
+        List of created host IDs
+    """
+    # Get credential profile if specified
+    creds = {}
+    if credential_profile_id:
+        profile = get_credential_profile(credential_profile_id)
+        if profile:
+            creds = {
+                'ssh_user': profile['ssh_user'],
+                'ssh_password': profile.get('ssh_password'),
+                'ssh_key_path': profile.get('ssh_key_path')
+            }
+    
+    conn = get_db()
+    host_ids = []
+    
+    for host in hosts:
+        # Use provided credentials or fall back to profile defaults
+        ssh_user = host.get('ssh_user') or creds.get('ssh_user', 'root')
+        ssh_password = host.get('ssh_password') or creds.get('ssh_password')
+        ssh_key_path = host.get('ssh_key_path') or creds.get('ssh_key_path')
+        
+        try:
+            cur = conn.execute(
+                """INSERT INTO hosts (name, address, ssh_user, ssh_password, ssh_key_path, 
+                   ssh_port, os_family, os_name, tags)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    host.get('name', host['address']),
+                    host['address'],
+                    ssh_user,
+                    ssh_password,
+                    ssh_key_path,
+                    host.get('ssh_port', 22),
+                    host.get('os_family', ''),
+                    host.get('os_name', ''),
+                    ",".join(host.get('tags', []))
+                )
+            )
+            host_ids.append(cur.lastrowid)
+        except sqlite3.IntegrityError:
+            # Host with this address already exists, skip
+            pass
+    
+    conn.commit()
+    conn.close()
+    return host_ids
 
 
 # --- Scan CRUD ---
@@ -399,3 +465,59 @@ def get_vulnerability_with_fix(vuln_id: int) -> Optional[dict]:
         vuln['references'] = []
     
     return vuln
+
+
+# --- Credential Profiles ---
+
+def add_credential_profile(name: str, ssh_user: str, ssh_password: str = None, 
+                          ssh_key_path: str = None) -> int:
+    """Add a new credential profile."""
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO credential_profiles (name, ssh_user, ssh_password, ssh_key_path)
+           VALUES (?, ?, ?, ?)""",
+        (name, ssh_user, ssh_password, ssh_key_path)
+    )
+    conn.commit()
+    profile_id = cur.lastrowid
+    conn.close()
+    return profile_id
+
+
+def get_credential_profile(profile_id: int) -> Optional[dict]:
+    """Get a credential profile by ID."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM credential_profiles WHERE id = ?", 
+        (profile_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_credential_profiles() -> list[dict]:
+    """List all credential profiles."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM credential_profiles ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_credential_profile(profile_id: int, **kwargs):
+    """Update a credential profile."""
+    conn = get_db()
+    sets = ", ".join(f"{k} = ?" for k in kwargs)
+    vals = list(kwargs.values()) + [profile_id]
+    conn.execute(f"UPDATE credential_profiles SET {sets} WHERE id = ?", vals)
+    conn.commit()
+    conn.close()
+
+
+def delete_credential_profile(profile_id: int):
+    """Delete a credential profile."""
+    conn = get_db()
+    conn.execute("DELETE FROM credential_profiles WHERE id = ?", (profile_id,))
+    conn.commit()
+    conn.close()
