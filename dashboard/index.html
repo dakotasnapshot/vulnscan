@@ -3,975 +3,1718 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VulnScan — Vulnerability Management</title>
+    <title>VulnScan — Vulnerability Dashboard</title>
     <style>
         :root {
-            --bg: #0f1117;
-            --surface: #1a1d27;
-            --surface2: #242836;
-            --border: #2e3344;
-            --text: #e4e6ef;
-            --text-dim: #8b8fa3;
-            --accent: #6c7ee1;
-            --critical: #ef4444;
-            --high: #f97316;
-            --medium: #eab308;
-            --low: #3b82f6;
-            --success: #22c55e;
-            --danger: #ef4444;
+            --bg: #061106;
+            --surface: #0c1a0c;
+            --surface2: #112611;
+            --border: #2a6b2a;
+            --text: #b7ff9f;
+            --text-dim: #5b9f5b;
+            --accent: #76ff6a;
+            --critical: #ff5f7a;
+            --high: #ffd166;
+            --medium: #c8ff66;
+            --low: #63f5b0;
+            --success: #78ff8f;
+            --glow: 0 0 8px rgba(118,255,106,0.35), 0 0 18px rgba(118,255,106,0.18);
+            --glow-alert: 0 0 10px rgba(255,95,122,0.42), 0 0 22px rgba(255,95,122,0.22);
             --radius: 8px;
         }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
-        .app { display: flex; min-height: 100vh; }
-        .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; flex-shrink: 0; position: fixed; height: 100vh; overflow-y: auto; }
-        .sidebar h1 { font-size: 18px; padding: 0 20px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+        body {
+            font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            background:
+                radial-gradient(circle at top, rgba(118,255,106,0.08), transparent 32%),
+                linear-gradient(180deg, #081308 0%, #050b05 100%);
+            color: var(--text);
+            line-height: 1.5;
+            text-shadow: 0 0 6px rgba(118,255,106,0.12);
+            position: relative;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(
+                    to bottom,
+                    rgba(190,255,190,0.04) 0px,
+                    rgba(190,255,190,0.04) 1px,
+                    rgba(0,0,0,0.0) 2px,
+                    rgba(0,0,0,0.0) 4px
+                );
+            opacity: 0.28;
+            mix-blend-mode: screen;
+            z-index: 1;
+        }
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.42) 100%),
+                radial-gradient(circle at center, rgba(118,255,106,0.08), transparent 55%);
+            z-index: 1;
+        }
+
+        /* Layout */
+        .app { display: flex; min-height: 100vh; position: relative; z-index: 2; }
+        .sidebar {
+            width: 220px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 20px 0;
+            flex-shrink: 0;
+            box-shadow: inset -1px 0 0 rgba(118,255,106,0.08), 0 0 28px rgba(80,255,120,0.08);
+        }
+        .sidebar h1 {
+            font-size: 18px;
+            padding: 0 20px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-shadow: var(--glow);
+        }
+        .sidebar h1 .icon { font-size: 22px; }
         .nav { padding: 12px 0; }
-        .nav a { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--text-dim); text-decoration: none; font-size: 14px; transition: all 0.15s; cursor: pointer; }
-        .nav a:hover, .nav a.active { color: var(--text); background: var(--surface2); }
-        .nav a.active { border-left: 3px solid var(--accent); }
-        .nav .divider { height: 1px; background: var(--border); margin: 8px 20px; }
-        .main { flex: 1; padding: 24px 32px; overflow-x: auto; margin-left: 220px; }
-        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .page-header h2 { font-size: 24px; font-weight: 600; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+        .nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.15s;
+            cursor: pointer;
+        }
+        .nav a:hover, .nav a.active {
+            color: var(--text);
+            background: var(--surface2);
+            box-shadow: inset 0 0 0 1px rgba(118,255,106,0.12);
+        }
+        .nav a.active {
+            border-left: 3px solid var(--accent);
+            text-shadow: var(--glow);
+        }
+        .main { flex: 1; padding: 24px 32px; overflow-x: auto; }
+
+        /* Cards */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: inset 0 0 0 1px rgba(118,255,106,0.08), 0 0 18px rgba(0,0,0,0.25), 0 0 18px rgba(118,255,106,0.05);
+        }
         .stat-card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
         .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
-        .stat-card.critical .value { color: var(--critical); }
+        .stat-card .value {
+            text-shadow: 0 0 8px rgba(118,255,106,0.65), 0 0 18px rgba(118,255,106,0.28), 0 0 30px rgba(118,255,106,0.12);
+            letter-spacing: 0.02em;
+        }
+        .stat-card.critical .value { color: var(--critical); text-shadow: var(--glow-alert); }
         .stat-card.high .value { color: var(--high); }
         .stat-card.medium .value { color: var(--medium); }
         .stat-card.low .value { color: var(--low); }
-        .stat-card.success .value { color: var(--success); }
-        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px; overflow: hidden; }
-        .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .panel-header h3 { font-size: 16px; font-weight: 600; }
-        .panel-body { padding: 0; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 10px 16px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); background: var(--surface2); position: sticky; top: 0; }
-        td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
-        tr:hover td { background: rgba(108,126,225,0.04); }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-        .badge.critical { background: rgba(239,68,68,0.15); color: var(--critical); }
-        .badge.high { background: rgba(249,115,22,0.15); color: var(--high); }
-        .badge.medium { background: rgba(234,179,8,0.15); color: var(--medium); }
-        .badge.low { background: rgba(59,130,246,0.15); color: var(--low); }
-        .badge.success { background: rgba(34,197,94,0.15); color: var(--success); }
-        .badge.running { background: rgba(108,126,225,0.15); color: var(--accent); }
-        .badge.failed { background: rgba(239,68,68,0.15); color: var(--critical); }
-        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; text-decoration: none; }
-        .btn:hover { background: var(--border); }
-        .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .btn.primary:hover { opacity: 0.85; }
-        .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-        .btn.danger:hover { opacity: 0.85; }
-        .btn.success { background: var(--success); border-color: var(--success); color: #fff; }
-        .btn.success:hover { opacity: 0.85; }
+
+        /* Tables */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            overflow: hidden;
+            box-shadow: inset 0 0 0 1px rgba(118,255,106,0.04), 0 0 22px rgba(0,0,0,0.22), 0 0 20px rgba(118,255,106,0.04);
+        }
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-header h2 { font-size: 16px; font-weight: 600; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 10px 16px;
+            color: var(--text-dim);
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            text-shadow: 0 0 10px rgba(118,255,106,0.18);
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover {
+            background: var(--surface2);
+            box-shadow: inset 0 0 0 999px rgba(118,255,106,0.03);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            border: 1px solid rgba(118,255,106,0.2);
+            text-shadow: 0 0 10px rgba(118,255,106,0.3);
+            box-shadow: inset 0 0 8px rgba(255,255,255,0.03);
+        }
+        .badge.critical { background: rgba(255,95,122,0.16); color: var(--critical); box-shadow: var(--glow-alert); }
+        .badge.high { background: rgba(255,209,102,0.14); color: var(--high); }
+        .badge.medium { background: rgba(200,255,102,0.14); color: var(--medium); }
+        .badge.low { background: rgba(99,245,176,0.14); color: var(--low); }
+        .badge.unknown { background: rgba(139,143,163,0.15); color: var(--text-dim); }
+        .badge.completed { background: rgba(120,255,143,0.15); color: var(--success); }
+        .badge.running { background: rgba(118,255,106,0.15); color: var(--accent); box-shadow: var(--glow); }
+        .badge.failed { background: rgba(255,95,122,0.15); color: var(--critical); box-shadow: var(--glow-alert); }
+        .badge.success { background: rgba(120,255,143,0.15); color: var(--success); }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.15s;
+            box-shadow: inset 0 0 0 1px rgba(118,255,106,0.05), 0 0 8px rgba(118,255,106,0.04);
+        }
+        .btn:hover { background: var(--border); box-shadow: 0 0 10px rgba(118,255,106,0.22), 0 0 24px rgba(118,255,106,0.12); }
+        .btn.primary {
+            background: rgba(118,255,106,0.12);
+            border-color: var(--accent);
+            color: var(--accent);
+            text-shadow: var(--glow);
+            box-shadow: var(--glow);
+        }
+        .btn.primary:hover { opacity: 0.9; }
+        .btn.danger {
+            background: rgba(255,95,122,0.14);
+            border-color: var(--critical);
+            color: #ffd7de;
+            box-shadow: var(--glow-alert);
+        }
         .btn.sm { padding: 4px 10px; font-size: 12px; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-group { display: flex; gap: 8px; }
-        input, select, textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 8px 12px; font-size: 13px; width: 100%; }
-        input:focus, select:focus { outline: none; border-color: var(--accent); }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+        .stack { display: flex; flex-direction: column; gap: 10px; }
+        .inline-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .muted { color: var(--text-dim); font-size: 12px; }
+
+        /* Forms */
         .form-group { margin-bottom: 12px; }
-        .form-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
-        .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-        .modal-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .modal-header h3 { font-size: 18px; }
-        .modal-body { padding: 20px; }
-        .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-        .close-btn { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; font-size: 14px; z-index: 200; animation: fadeIn 0.3s; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-        .toast.success { border-color: var(--success); }
-        .toast.error { border-color: var(--critical); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .compliance-card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .compliance-card.pass { border-left: 3px solid var(--success); }
-        .compliance-card.fail { border-left: 3px solid var(--critical); }
-        .progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
-        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
-        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
-        pre.cmd { background: #000; color: #22c55e; padding: 12px; border-radius: var(--radius); font-family: 'SF Mono', 'Courier New', monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap; margin: 8px 0; }
-        .risk-high { color: var(--critical); }
-        .risk-low { color: var(--success); }
-        .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
-        .filter-bar select, .filter-bar input { width: auto; min-width: 150px; }
-        .tag { display: inline-block; padding: 2px 6px; background: var(--surface2); border-radius: 3px; font-size: 11px; margin: 1px 2px; }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.25), inset 0 0 18px rgba(118,255,106,0.03);
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--glow);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 480px;
+            max-width: 90vw;
+            box-shadow: 0 0 28px rgba(118,255,106,0.15), 0 0 60px rgba(0,0,0,0.45);
+        }
+        .modal h3 { margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select { width: auto; min-width: 120px; }
+
+        /* Host bar chart */
+        .host-bar {
+            display: flex;
+            height: 20px;
+            border-radius: 4px;
+            overflow: hidden;
+            min-width: 120px;
+        }
+        .host-bar .seg { height: 100%; min-width: 2px; }
+        .host-bar .seg.critical { background: var(--critical); }
+        .host-bar .seg.high { background: var(--high); }
+        .host-bar .seg.medium { background: var(--medium); }
+        .host-bar .seg.low { background: var(--low); }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 13px;
+            z-index: 200;
+            animation: slideIn 0.3s;
+            box-shadow: 0 0 16px rgba(118,255,106,0.18), inset 0 0 12px rgba(118,255,106,0.05);
+        }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .empty { padding: 40px; text-align: center; color: var(--text-dim); }
+        .log-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+        .log-list { max-height: 420px; overflow: auto; padding: 8px 0; }
+        .log-entry {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-entry .title {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .log-entry .meta { color: var(--text-dim); font-size: 11px; }
+        .log-entry .body { font-size: 12px; color: var(--text); margin-top: 6px; white-space: pre-wrap; }
+        .compliance-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px; }
+        .violation-list { display:flex; flex-direction:column; gap:10px; }
+        .violation-item { padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:rgba(17,38,17,0.55); }
+        .policy-editor { display:grid; grid-template-columns: 1.4fr 100px 120px 140px; gap:10px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--border); }
+        .policy-editor:last-child { border-bottom:none; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { padding: 16px; }
+            .stat-grid { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body>
-<div class="app">
-    <div class="sidebar">
-        <h1><span class="icon">🛡️</span> VulnScan</h1>
-        <div class="nav">
-            <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
-            <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
-            <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
-            <a onclick="showPage('remediation')" id="nav-remediation">🔧 Remediation</a>
-            <div class="divider"></div>
-            <a onclick="showPage('discovery')" id="nav-discovery">🔎 Discovery</a>
-            <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
-            <a onclick="showPage('compliance')" id="nav-compliance">📋 Compliance</a>
-            <div class="divider"></div>
-            <a onclick="showPage('settings')" id="nav-settings">⚙️ Settings</a>
+    <div class="app">
+        <aside class="sidebar">
+            <h1><span class="icon">🛡️</span> VulnScan</h1>
+            <nav class="nav">
+                <a onclick="showPage('dashboard')" class="active" id="nav-dashboard">📊 Dashboard</a>
+                <a onclick="showPage('hosts')" id="nav-hosts">🖥️ Hosts</a>
+                <a onclick="showPage('discovery')" id="nav-discovery">🔎 Discovery</a>
+                <a onclick="showPage('vulns')" id="nav-vulns">⚠️ Vulnerabilities</a>
+                <a onclick="showPage('compliance')" id="nav-compliance">✅ Compliance</a>
+                <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
+                <a onclick="showPage('schedules')" id="nav-schedules">⏱ Schedules</a>
+                <a onclick="showPage('logs')" id="nav-logs">📜 Logs</a>
+            </nav>
+        </aside>
+
+        <main class="main" id="content">
+            <!-- Content injected by JS -->
+        </main>
+    </div>
+
+    <!-- Add Host Modal -->
+    <div class="modal-overlay" id="addHostModal">
+        <div class="modal">
+            <h3 id="hostModalTitle">Add Host</h3>
+            <input type="hidden" id="host-id">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="host-name" placeholder="e.g. web-server-1">
+            </div>
+            <div class="form-group">
+                <label>Address (IP or hostname)</label>
+                <input type="text" id="host-address" placeholder="e.g. 192.168.1.10">
+            </div>
+            <div class="form-group">
+                <label>SSH User</label>
+                <input type="text" id="host-user" value="root">
+            </div>
+            <div class="form-group">
+                <label>SSH Password (leave blank for key auth)</label>
+                <input type="password" id="host-password">
+            </div>
+            <div class="form-group">
+                <label>SSH Key Path (leave blank for password auth)</label>
+                <input type="text" id="host-keypath" placeholder="/root/.ssh/id_rsa">
+            </div>
+            <div class="form-group">
+                <label>SSH Port</label>
+                <input type="number" id="host-port" value="22">
+            </div>
+            <div class="form-group">
+                <label>Platform</label>
+                <select id="host-platform">
+                    <option value="">Auto / Generic</option>
+                    <option value="routeros">RouterOS / Network Device</option>
+                    <option value="linux">Linux</option>
+                    <option value="windows">Windows</option>
+                    <option value="darwin">macOS</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Vendor</label>
+                <input type="text" id="host-vendor" placeholder="e.g. MikroTik">
+            </div>
+            <div class="form-group">
+                <label>Device Type</label>
+                <input type="text" id="host-device-type" placeholder="e.g. network_device">
+            </div>
+            <div class="form-group">
+                <label>Version</label>
+                <input type="text" id="host-version" placeholder="e.g. 7.20.4">
+            </div>
+            <div class="form-group">
+                <label>SNMP Community</label>
+                <input type="text" id="host-snmp-community" placeholder="e.g. public">
+            </div>
+            <div class="form-group">
+                <label>SNMP Version</label>
+                <select id="host-snmp-version">
+                    <option value="2c" selected>2c</option>
+                    <option value="1">1</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>SNMP Port</label>
+                <input type="number" id="host-snmp-port" value="161">
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <input type="text" id="host-tags" placeholder="production, web">
+            </div>
+            <div class="muted" style="margin-top:8px">If this is a network device, fill SNMP and platform info here. Discovery is still the best path for automatic fingerprinting.</div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn primary" onclick="addHost()">Add Host</button>
+            </div>
         </div>
     </div>
-    <div class="main" id="content">Loading...</div>
-</div>
-<div id="modal-root"></div>
-<div id="toast-root"></div>
 
-<script>
-const API = '';
-let currentPage = 'dashboard';
-let scanningAll = false;
+    <div class="modal-overlay" id="hostDetailsModal">
+        <div class="modal" style="width:900px;max-width:95vw;max-height:90vh;overflow:auto">
+            <h3 id="hostDetailsTitle">Host Details</h3>
+            <div id="hostDetailsBody" class="muted">Loading...</div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
-function authHeaders() {
-    const creds = sessionStorage.getItem('vulnscan_auth') || prompt('Enter credentials (user:pass)', 'admin:'); if (creds) sessionStorage.setItem('vulnscan_auth', creds); return { 'Authorization': 'Basic ' + btoa(creds || 'admin:'), 'Content-Type': 'application/json' };
-}
+    <div class="modal-overlay" id="addScheduleModal">
+        <div class="modal">
+            <h3>Create Scan Schedule</h3>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="schedule-name" placeholder="e.g. Nightly all hosts">
+            </div>
+            <div class="form-group">
+                <label>Target Host</label>
+                <select id="schedule-host">
+                    <option value="">All enabled hosts</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Cron Expression</label>
+                <input type="text" id="schedule-cron" value="0 2 * * *" placeholder="0 2 * * *">
+            </div>
+            <div class="muted">Examples: <code>0 2 * * *</code> nightly at 2 AM, <code>*/30 * * * *</code> every 30 minutes.</div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeScheduleModal()">Cancel</button>
+                <button class="btn primary" onclick="addSchedule()">Create Schedule</button>
+            </div>
+        </div>
+    </div>
 
-async function api(path, opts = {}) {
-    const r = await fetch(API + path, { headers: authHeaders(), ...opts });
-    if (!r.ok && r.status !== 201) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-}
+    <script>
+    const API = '';  // Same origin
 
-async function apiPost(path, data) {
-    return api(path, { method: 'POST', body: JSON.stringify(data) });
-}
+    // State
+    let currentPage = 'dashboard';
+    let dashboardData = null;
 
-function toast(msg, type = 'success') {
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.textContent = msg;
-    document.getElementById('toast-root').appendChild(el);
-    setTimeout(() => el.remove(), 4000);
-}
+    // --- API Helpers ---
+    async function api(method, path, body = null) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API + path, opts);
+        return res.json();
+    }
 
-function showModal(html) {
-    document.getElementById('modal-root').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
-}
+    function toast(msg) {
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3000);
+    }
 
-function closeModal() {
-    document.getElementById('modal-root').innerHTML = '';
-}
+    // --- Pages ---
+    async function showPage(page) {
+        currentPage = page;
+        manageAutoRefresh(page);
+        document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+        document.getElementById('nav-' + page)?.classList.add('active');
 
-function severityBadge(sev) {
-    return `<span class="badge ${sev}">${sev}</span>`;
-}
-
-function timeAgo(ts) {
-    if (!ts) return '—';
-    const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z');
-    const s = Math.floor((Date.now() - d) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s/60)}m ago`;
-    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
-    return `${Math.floor(s/86400)}d ago`;
-}
-
-async function showPage(page) {
-    currentPage = page;
-    document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
-    const navEl = document.getElementById('nav-' + page);
-    if (navEl) navEl.classList.add('active');
-    const el = document.getElementById('content');
-    try {
+        const el = document.getElementById('content');
         switch (page) {
             case 'dashboard': el.innerHTML = await renderDashboard(); break;
             case 'hosts': el.innerHTML = await renderHosts(); break;
-            case 'vulns': el.innerHTML = await renderVulns(); break;
-            case 'remediation': el.innerHTML = await renderRemediation(); break;
             case 'discovery': el.innerHTML = await renderDiscovery(); break;
-            case 'scans': el.innerHTML = await renderScans(); break;
+            case 'vulns': el.innerHTML = await renderVulns(); break;
             case 'compliance': el.innerHTML = await renderCompliance(); break;
-            case 'settings': el.innerHTML = await renderSettings(); break;
+            case 'scans': el.innerHTML = await renderScans(); break;
+            case 'schedules': el.innerHTML = await renderSchedules(); break;
+            case 'logs': el.innerHTML = await renderLogs(); break;
         }
-    } catch (e) {
-        el.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Error loading page: ${e.message}</p></div>`;
     }
-}
 
-// ─── DASHBOARD ───
-async function renderDashboard() {
-    const d = await api('/api/dashboard');
-    const hostsRows = (d.hosts_summary || []).map(h => `
-        <tr>
-            <td><a href="#" onclick="showHostDetail(${h.host_id})" style="color:var(--accent)">${h.name}</a></td>
-            <td>${h.address}</td>
-            <td><span class="badge critical">${h.critical}</span></td>
-            <td><span class="badge high">${h.high}</span></td>
-            <td><span class="badge medium">${h.medium}</span></td>
-            <td><span class="badge low">${h.low}</span></td>
-            <td>${h.total}</td>
-        </tr>
-    `).join('');
+    // --- Dashboard ---
+    async function renderDashboard() {
+        const d = await api('GET', '/api/dashboard');
+        dashboardData = d;
 
-    const recentScans = (d.recent_scans || []).slice(0, 5).map(s => `
-        <tr>
-            <td>${s.host_name}</td>
-            <td><span class="badge ${s.status}">${s.status}</span></td>
-            <td>${s.packages_found}</td>
-            <td>${s.vulns_found}</td>
-            <td>${timeAgo(s.started_at)}</td>
-        </tr>
-    `).join('');
+        let hostsHtml = '';
+        for (const h of (d.hosts_summary || [])) {
+            const total = h.total || 0;
+            const maxBar = Math.max(total, 1);
+            hostsHtml += `<tr>
+                <td><strong>${esc(h.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${esc(h.address)}</span></td>
+                <td>
+                    <div class="host-bar" title="C:${h.critical} H:${h.high} M:${h.medium} L:${h.low}">
+                        ${h.critical ? `<div class="seg critical" style="width:${h.critical/maxBar*100}%"></div>` : ''}
+                        ${h.high ? `<div class="seg high" style="width:${h.high/maxBar*100}%"></div>` : ''}
+                        ${h.medium ? `<div class="seg medium" style="width:${h.medium/maxBar*100}%"></div>` : ''}
+                        ${h.low ? `<div class="seg low" style="width:${h.low/maxBar*100}%"></div>` : ''}
+                    </div>
+                </td>
+                <td style="text-align:right">${total}</td>
+            </tr>`;
+        }
 
-    return `
-        <div class="page-header">
-            <h2>Dashboard</h2>
-            <div class="btn-group">
-                <button class="btn primary" onclick="scanAllHosts()" ${scanningAll ? 'disabled' : ''}>
-                    ${scanningAll ? '<span class="spinner"></span> Scanning...' : '🔍 Scan All Hosts'}
-                </button>
+        let scansHtml = '';
+        for (const s of (d.recent_scans || []).slice(0, 5)) {
+            scansHtml += `<tr>
+                <td>${esc(s.host_name)}</td>
+                <td><span class="badge ${s.status}">${s.status}</span></td>
+                <td>${s.packages_found}</td>
+                <td>${s.vulns_found}</td>
+                <td>${timeAgo(s.started_at)}</td>
+            </tr>`;
+        }
+
+        return `
+            <h2 style="margin-bottom:20px">Dashboard</h2>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="label">Hosts</div><div class="value">${d.total_hosts}</div></div>
+                <div class="stat-card critical"><div class="label">Critical</div><div class="value">${d.critical}</div></div>
+                <div class="stat-card high"><div class="label">High</div><div class="value">${d.high}</div></div>
+                <div class="stat-card medium"><div class="label">Medium</div><div class="value">${d.medium}</div></div>
+                <div class="stat-card low"><div class="label">Low</div><div class="value">${d.low}</div></div>
+                <div class="stat-card"><div class="label">Total Open</div><div class="value">${d.total_vulns}</div></div>
             </div>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card"><div class="label">Total Hosts</div><div class="value">${d.total_hosts}</div></div>
-            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${d.critical}</div></div>
-            <div class="stat-card high"><div class="label">High</div><div class="value">${d.high}</div></div>
-            <div class="stat-card medium"><div class="label">Medium</div><div class="value">${d.medium}</div></div>
-            <div class="stat-card low"><div class="label">Low</div><div class="value">${d.low}</div></div>
-            <div class="stat-card"><div class="label">Total Open</div><div class="value">${d.total_vulns}</div></div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Hosts by Risk</h3></div>
-            <div class="panel-body">
-                <table><tr><th>Host</th><th>Address</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Total</th></tr>
-                ${hostsRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No hosts configured</td></tr>'}
-                </table>
-            </div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Recent Scans</h3></div>
-            <div class="panel-body">
-                <table><tr><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>When</th></tr>
-                ${recentScans || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No scans yet</td></tr>'}
-                </table>
-            </div>
-        </div>
-    `;
-}
 
-async function scanAllHosts() {
-    if (scanningAll) return;
-    scanningAll = true;
-    showPage('dashboard');
-    toast('Scanning all hosts — this may take several minutes...');
-    try {
-        await apiPost('/api/scan', {});
-        // Poll until done
-        let checks = 0;
-        const poll = setInterval(async () => {
-            checks++;
-            if (checks > 120) { clearInterval(poll); scanningAll = false; showPage('dashboard'); return; }
-            try {
-                const scans = await api('/api/scans?limit=1');
-                if (scans.length && scans[0].status !== 'running') {
-                    clearInterval(poll);
-                    scanningAll = false;
-                    toast('Scan complete!');
-                    showPage('dashboard');
-                }
-            } catch(e) {}
-        }, 5000);
-    } catch (e) {
-        scanningAll = false;
-        toast('Scan failed: ' + e.message, 'error');
-        showPage('dashboard');
-    }
-}
-
-// ─── HOSTS ───
-async function renderHosts() {
-    const hosts = await api('/api/hosts');
-    const rows = hosts.map(h => `
-        <tr>
-            <td><a href="#" onclick="showHostDetail(${h.id})" style="color:var(--accent)">${h.name}</a></td>
-            <td>${h.address}</td>
-            <td>${h.os_name || h.os_family || '—'}</td>
-            <td>${h.ssh_user}@:${h.ssh_port}</td>
-            <td>${h.enabled ? '✅' : '❌'}</td>
-            <td>${timeAgo(h.last_scan)}</td>
-            <td>
-                <div class="btn-group">
-                    <button class="btn sm" onclick="scanHost(${h.id})">🔍 Scan</button>
-                    <button class="btn sm" onclick="editHost(${h.id})">✏️</button>
-                    <button class="btn sm danger" onclick="deleteHost(${h.id})">🗑️</button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Hosts Overview</h2>
+                        <button class="btn primary sm" onclick="scanAll()">Scan All</button>
+                    </div>
+                    <table>
+                        <tr><th>Host</th><th>Vulnerabilities</th><th style="text-align:right">Total</th></tr>
+                        ${hostsHtml || '<tr><td colspan="3" class="empty">No hosts configured</td></tr>'}
+                    </table>
                 </div>
-            </td>
-        </tr>
-    `).join('');
 
-    return `
-        <div class="page-header">
-            <h2>Hosts (${hosts.length})</h2>
-            <div class="btn-group">
-                <button class="btn primary" onclick="showAddHostModal()">+ Add Host</button>
-                <button class="btn" onclick="showPage('discovery')">🔎 Discover</button>
+                <div class="panel">
+                    <div class="panel-header"><h2>Recent Scans</h2></div>
+                    <table>
+                        <tr><th>Host</th><th>Status</th><th>Pkgs</th><th>Vulns</th><th>When</th></tr>
+                        ${scansHtml || '<tr><td colspan="5" class="empty">No scans yet</td></tr>'}
+                    </table>
+                </div>
             </div>
-        </div>
-        <div class="panel"><div class="panel-body">
-            <table>
-                <tr><th>Name</th><th>Address</th><th>OS</th><th>SSH</th><th>Enabled</th><th>Last Scan</th><th>Actions</th></tr>
-                ${rows || '<tr><td colspan="7" class="empty-state">No hosts. Add one or run discovery.</td></tr>'}
-            </table>
-        </div></div>
-    `;
-}
+        `;
+    }
 
-function showAddHostModal() {
-    showModal(`
-        <div class="modal-header"><h3>Add Host</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-        <div class="modal-body">
-            <div class="form-row">
-                <div class="form-group"><label>Name</label><input id="h-name" placeholder="e.g. web-server-01"></div>
-                <div class="form-group"><label>Address (IP/hostname)</label><input id="h-addr" placeholder="192.168.1.10"></div>
+    // --- Hosts ---
+    async function renderHosts() {
+        const hosts = await api('GET', '/api/hosts');
+        let rows = '';
+        for (const h of hosts) {
+            const access = [];
+            if (h.snmp_community) access.push('SNMP');
+            if (h.ssh_user) access.push('SSH');
+            rows += `<tr>
+                <td><strong>${esc(h.name)}</strong></td>
+                <td>${esc(h.address)}</td>
+                <td>${esc(access.join(' / ') || '—')}</td>
+                <td>${esc(h.os_name || '—')}</td>
+                <td>${h.last_scan ? timeAgo(h.last_scan) : 'Never'}</td>
+                <td>
+                    <label class="muted" style="display:flex;align-items:center;gap:6px">
+                        <input type="checkbox" ${h.enabled ? 'checked' : ''} onchange="toggleHostEnabled(${h.id}, this.checked)">
+                        ${h.enabled ? 'enabled' : 'disabled'}
+                    </label>
+                </td>
+                <td>
+                    <button class="btn sm" onclick="editHost(${h.id})">Edit</button>
+                    <button class="btn sm" onclick="showHostDetails(${h.id})">Details</button>
+                    <button class="btn sm" onclick="scanHost(${h.id})">Scan</button>
+                    <button class="btn sm danger" onclick="deleteHost(${h.id})">Delete</button>
+                </td>
+            </tr>`;
+        }
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Hosts</h2>
+                <button class="btn primary" onclick="document.getElementById('addHostModal').classList.add('active')">+ Add Host</button>
             </div>
-            <div class="form-row">
-                <div class="form-group"><label>SSH User</label><input id="h-user" value="root"></div>
-                <div class="form-group"><label>SSH Port</label><input id="h-port" type="number" value="22"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>SSH Password</label><input id="h-pass" type="password" placeholder="(optional)"></div>
-                <div class="form-group"><label>SSH Key Path</label><input id="h-key" placeholder="/root/.ssh/id_rsa (optional)"></div>
-            </div>
-            <div class="form-group"><label>Tags (comma-separated)</label><input id="h-tags" placeholder="linux, production"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn primary" onclick="addHost()">Add Host</button>
-        </div>
-    `);
-}
-
-async function addHost() {
-    const data = {
-        name: document.getElementById('h-name').value,
-        address: document.getElementById('h-addr').value,
-        ssh_user: document.getElementById('h-user').value || 'root',
-        ssh_port: parseInt(document.getElementById('h-port').value) || 22,
-        ssh_password: document.getElementById('h-pass').value || undefined,
-        ssh_key_path: document.getElementById('h-key').value || undefined,
-        tags: document.getElementById('h-tags').value.split(',').map(t => t.trim()).filter(Boolean)
-    };
-    if (!data.name || !data.address) { toast('Name and address required', 'error'); return; }
-    try {
-        await apiPost('/api/hosts', data);
-        closeModal();
-        toast('Host added');
-        showPage('hosts');
-    } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function scanHost(id) {
-    toast('Scan started...');
-    try { await apiPost('/api/scan', { host_id: id }); } catch(e) { toast('Failed: '+e.message, 'error'); }
-}
-
-async function deleteHost(id) {
-    if (!confirm('Delete this host and all its scan data?')) return;
-    try {
-        await fetch(API + `/api/hosts/${id}`, { method: 'DELETE', headers: authHeaders() });
-        toast('Host deleted');
-        showPage('hosts');
-    } catch(e) { toast('Failed: '+e.message, 'error'); }
-}
-
-async function editHost(id) {
-    const h = await api(`/api/hosts/${id}`);
-    showModal(`
-        <div class="modal-header"><h3>Edit Host: ${h.name}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-        <div class="modal-body">
-            <div class="form-row">
-                <div class="form-group"><label>Name</label><input id="eh-name" value="${h.name}"></div>
-                <div class="form-group"><label>Address</label><input id="eh-addr" value="${h.address}"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>SSH User</label><input id="eh-user" value="${h.ssh_user}"></div>
-                <div class="form-group"><label>SSH Port</label><input id="eh-port" type="number" value="${h.ssh_port}"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>SSH Password</label><input id="eh-pass" type="password" value="${h.ssh_password||''}"></div>
-                <div class="form-group"><label>SSH Key Path</label><input id="eh-key" value="${h.ssh_key_path||''}"></div>
-            </div>
-            <div class="form-group"><label>Enabled</label><select id="eh-enabled"><option value="1" ${h.enabled?'selected':''}>Yes</option><option value="0" ${h.enabled?'':'selected'}>No</option></select></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn primary" onclick="saveHost(${h.id})">Save</button>
-        </div>
-    `);
-}
-
-async function saveHost(id) {
-    const data = {
-        name: document.getElementById('eh-name').value,
-        address: document.getElementById('eh-addr').value,
-        ssh_user: document.getElementById('eh-user').value,
-        ssh_port: parseInt(document.getElementById('eh-port').value),
-        ssh_password: document.getElementById('eh-pass').value,
-        ssh_key_path: document.getElementById('eh-key').value,
-        enabled: parseInt(document.getElementById('eh-enabled').value)
-    };
-    try {
-        await fetch(API + `/api/hosts/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) });
-        closeModal();
-        toast('Host updated');
-        showPage('hosts');
-    } catch(e) { toast('Failed: '+e.message, 'error'); }
-}
-
-async function showHostDetail(id) {
-    const h = await api(`/api/hosts/${id}`);
-    const vulns = await api(`/api/vulnerabilities?host_id=${id}&limit=100`);
-    const vulnRows = vulns.map(v => `
-        <tr>
-            <td>${severityBadge(v.severity)}</td>
-            <td><a href="#" onclick="showVulnDetail(${v.id})" style="color:var(--accent)">${v.cve_id}</a></td>
-            <td>${v.package_name}</td>
-            <td>${v.package_version}</td>
-            <td>${v.fixed_version || '—'}</td>
-            <td>${v.status}</td>
-            <td><button class="btn sm" onclick="showFixPreview(${v.id})">🔧 Fix</button></td>
-        </tr>
-    `).join('');
-    
-    const el = document.getElementById('content');
-    el.innerHTML = `
-        <div class="page-header">
-            <h2>🖥️ ${h.name} <span style="color:var(--text-dim);font-size:14px">(${h.address})</span></h2>
-            <div class="btn-group">
-                <button class="btn" onclick="scanHost(${h.id})">🔍 Scan Now</button>
-                <button class="btn primary" onclick="remediateHost(${h.id})">🔧 Fix All</button>
-                <button class="btn" onclick="showPage('hosts')">← Back</button>
-            </div>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card"><div class="label">OS</div><div class="value" style="font-size:16px">${h.os_name || h.os_family || 'Unknown'}</div></div>
-            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${vulns.filter(v=>v.severity==='critical').length}</div></div>
-            <div class="stat-card high"><div class="label">High</div><div class="value">${vulns.filter(v=>v.severity==='high').length}</div></div>
-            <div class="stat-card"><div class="label">Total Open</div><div class="value">${vulns.length}</div></div>
-            <div class="stat-card"><div class="label">Last Scan</div><div class="value" style="font-size:14px">${timeAgo(h.last_scan)}</div></div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Open Vulnerabilities (${vulns.length})</h3></div>
-            <div class="panel-body">
+            <div class="panel">
                 <table>
-                    <tr><th>Severity</th><th>CVE</th><th>Package</th><th>Version</th><th>Fix Version</th><th>Status</th><th>Action</th></tr>
-                    ${vulnRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No open vulnerabilities 🎉</td></tr>'}
+                    <tr><th>Name</th><th>Address</th><th>Access</th><th>OS</th><th>Last Scan</th><th>Enabled</th><th>Actions</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No hosts configured yet</td></tr>'}
                 </table>
             </div>
-        </div>
-    `;
-}
+        `;
+    }
 
-// ─── VULNERABILITIES ───
-async function renderVulns() {
-    const vulns = await api('/api/vulnerabilities?limit=500');
-    const rows = vulns.map(v => `
-        <tr>
-            <td>${severityBadge(v.severity)}</td>
-            <td><a href="#" onclick="showVulnDetail(${v.id})" style="color:var(--accent)">${v.cve_id}</a></td>
-            <td>${v.host_name}</td>
-            <td>${v.package_name}</td>
-            <td>${v.package_version}</td>
-            <td>${v.fixed_version || '—'}</td>
-            <td>${timeAgo(v.first_seen)}</td>
-            <td>
-                <div class="btn-group">
-                    <button class="btn sm" onclick="showFixPreview(${v.id})">🔧 Fix</button>
-                    <button class="btn sm" onclick="updateVulnStatus(${v.id},'acknowledged')">👁️</button>
-                    <button class="btn sm" onclick="updateVulnStatus(${v.id},'false_positive')">🚫</button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
+    // --- Discovery ---
+let discoveryResults = [];
+let hypervisorResults = [];
+let credentialProfiles = [];
+    let discoveryUpserted = [];
+    let discoveryScansStarted = [];
 
-    return `
-        <div class="page-header">
-            <h2>Vulnerabilities (${vulns.length})</h2>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card critical"><div class="label">Critical</div><div class="value">${vulns.filter(v=>v.severity==='critical').length}</div></div>
-            <div class="stat-card high"><div class="label">High</div><div class="value">${vulns.filter(v=>v.severity==='high').length}</div></div>
-            <div class="stat-card medium"><div class="label">Medium</div><div class="value">${vulns.filter(v=>v.severity==='medium').length}</div></div>
-            <div class="stat-card low"><div class="label">Low</div><div class="value">${vulns.filter(v=>v.severity==='low').length}</div></div>
-        </div>
-        <div class="panel"><div class="panel-body">
-            <table>
-                <tr><th>Severity</th><th>CVE</th><th>Host</th><th>Package</th><th>Version</th><th>Fix</th><th>Age</th><th>Actions</th></tr>
-                ${rows || '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">No open vulnerabilities</td></tr>'}
-            </table>
-        </div></div>
-    `;
-}
-
-async function showVulnDetail(id) {
-    try {
-        const v = await api(`/api/vulnerabilities/${id}`);
-        let refs = '';
-        try { refs = (v.references || []).map(r => `<a href="${r}" target="_blank" style="color:var(--accent);word-break:break-all">${r}</a>`).join('<br>'); } catch(e) {}
+    async function renderDiscovery() {
+        credentialProfiles = await api('GET', '/api/credentials');
+        const hosts = await api('GET', '/api/hosts');
         
-        showModal(`
-            <div class="modal-header"><h3>${v.cve_id}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-            <div class="modal-body">
-                <p>${severityBadge(v.severity)} ${v.cvss_score ? `CVSS: ${v.cvss_score}` : ''}</p>
-                <p style="margin:12px 0;color:var(--text-dim)">${v.summary || 'No description available'}</p>
-                <div class="form-row" style="margin-top:16px">
-                    <div><strong>Package:</strong> ${v.package_name} ${v.package_version}</div>
-                    <div><strong>Fix Version:</strong> ${v.fixed_version || 'N/A'}</div>
-                </div>
-                <div class="form-row">
-                    <div><strong>Host:</strong> ${v.host_name || ''} (${v.address || ''})</div>
-                    <div><strong>Type:</strong> ${v.pkg_type}</div>
-                </div>
-                ${v.fix_command ? `<div style="margin-top:16px"><strong>Fix Command:</strong><pre class="cmd">${v.fix_command}</pre><span class="badge ${v.fix_risk === 'high' ? 'critical' : 'success'}">Risk: ${v.fix_risk}</span></div>` : ''}
-                ${refs ? `<div style="margin-top:16px"><strong>References:</strong><br>${refs}</div>` : ''}
-            </div>
-            <div class="modal-footer">
-                <button class="btn" onclick="updateVulnStatus(${v.id},'false_positive');closeModal()">🚫 False Positive</button>
-                <button class="btn" onclick="updateVulnStatus(${v.id},'acknowledged');closeModal()">👁️ Acknowledge</button>
-                ${v.fix_command ? `<button class="btn primary" onclick="showFixPreview(${v.id});closeModal()">🔧 Remediate</button>` : ''}
-            </div>
-        `);
-    } catch(e) { toast('Failed to load vulnerability details', 'error'); }
-}
-
-async function updateVulnStatus(id, status) {
-    try {
-        await fetch(API + `/api/vulnerabilities/${id}/status`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ status }) });
-        toast(`Marked as ${status}`);
-        showPage(currentPage);
-    } catch(e) { toast('Failed: '+e.message, 'error'); }
-}
-
-// ─── REMEDIATION ───
-async function renderRemediation() {
-    let history = [];
-    try { history = await api('/api/remediate/history?limit=50'); } catch(e) {}
-    
-    const rows = history.map(r => `
-        <tr>
-            <td>${r.host_name || r.host_id}</td>
-            <td><pre class="cmd" style="margin:0;padding:4px 8px">${r.command}</pre></td>
-            <td><span class="badge ${r.dry_run ? 'medium' : 'success'}">${r.dry_run ? 'Dry Run' : 'Executed'}</span></td>
-            <td><span class="badge ${r.success ? 'success' : 'failed'}">${r.success ? 'Success' : 'Failed'}</span></td>
-            <td>${timeAgo(r.timestamp)}</td>
-        </tr>
-    `).join('');
-
-    const hosts = await api('/api/hosts');
-    const hostOpts = hosts.map(h => `<option value="${h.id}">${h.name} (${h.address})</option>`).join('');
-
-    return `
-        <div class="page-header">
-            <h2>Remediation</h2>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Remediate Host</h3></div>
-            <div class="panel-body" style="padding:20px">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Target Host</label>
-                        <select id="rem-host"><option value="">Select a host...</option>${hostOpts}</select>
-                    </div>
-                    <div class="form-group">
-                        <label>Severity Filter</label>
-                        <select id="rem-sev">
-                            <option value="">All severities</option>
-                            <option value="critical">Critical only</option>
-                            <option value="high">High only</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="btn-group">
-                    <button class="btn" onclick="remediateHostDryRun()">🔍 Preview (Dry Run)</button>
-                    <button class="btn danger" onclick="remediateHostExecute()">⚡ Execute Fixes</button>
-                </div>
-                <div id="rem-results" style="margin-top:16px"></div>
-            </div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Remediation History</h3></div>
-            <div class="panel-body">
-                <table>
-                    <tr><th>Host</th><th>Command</th><th>Mode</th><th>Result</th><th>When</th></tr>
-                    ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No remediation history</td></tr>'}
-                </table>
-            </div>
-        </div>
-    `;
-}
-
-async function remediateHostDryRun() {
-    const hostId = document.getElementById('rem-host').value;
-    const sev = document.getElementById('rem-sev').value;
-    if (!hostId) { toast('Select a host', 'error'); return; }
-    const el = document.getElementById('rem-results');
-    el.innerHTML = '<span class="spinner"></span> Running dry run...';
-    try {
-        const results = await apiPost('/api/remediate/host', { host_id: parseInt(hostId), dry_run: true, severity: sev || undefined });
-        if (!results.length) { el.innerHTML = '<p style="color:var(--text-dim)">No fixable vulnerabilities found.</p>'; return; }
-        el.innerHTML = `<h4 style="margin-bottom:12px">${results.length} fixes available:</h4>` +
-            results.map(r => `
-                <div style="margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
-                    <strong>${r.fix_info?.package || 'Unknown'}</strong> → ${r.fix_info?.fixed_version || 'latest'}
-                    <span class="badge ${r.fix_info?.risk === 'high' ? 'critical' : 'success'}">Risk: ${r.fix_info?.risk || '?'}</span>
-                    <pre class="cmd">${r.fix_info?.command || r.command || 'N/A'}</pre>
-                </div>
-            `).join('');
-    } catch(e) { el.innerHTML = `<p style="color:var(--critical)">Error: ${e.message}</p>`; }
-}
-
-async function remediateHostExecute() {
-    const hostId = document.getElementById('rem-host').value;
-    const sev = document.getElementById('rem-sev').value;
-    if (!hostId) { toast('Select a host', 'error'); return; }
-    if (!confirm('⚠️ This will execute package upgrades on the selected host. Proceed?')) return;
-    const el = document.getElementById('rem-results');
-    el.innerHTML = '<span class="spinner"></span> Executing remediation...';
-    try {
-        const results = await apiPost('/api/remediate/host', { host_id: parseInt(hostId), dry_run: false, severity: sev || undefined });
-        const success = results.filter(r => r.success).length;
-        const failed = results.filter(r => !r.success).length;
-        el.innerHTML = `<h4>${results.length} fixes attempted: ✅ ${success} success, ❌ ${failed} failed</h4>` +
-            results.map(r => `
-                <div style="margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
-                    <span class="badge ${r.success ? 'success' : 'failed'}">${r.success ? 'OK' : 'FAIL'}</span>
-                    <pre class="cmd">${r.command}</pre>
-                    ${r.error ? `<pre class="cmd" style="color:var(--critical)">${r.error}</pre>` : ''}
-                </div>
-            `).join('');
-        toast(`Remediation complete: ${success}/${results.length} succeeded`);
-    } catch(e) { el.innerHTML = `<p style="color:var(--critical)">Error: ${e.message}</p>`; }
-}
-
-async function showFixPreview(vulnId) {
-    try {
-        const v = await apiPost('/api/remediate/preview', { vuln_id: vulnId });
-        showModal(`
-            <div class="modal-header"><h3>🔧 Fix ${v.cve_id}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-            <div class="modal-body">
-                <p><strong>Host:</strong> ${v.host_name} (${v.address})</p>
-                <p><strong>Package:</strong> ${v.package_name} ${v.package_version} → ${v.fixed_version || 'latest'}</p>
-                ${v.fix_command ? `
-                    <p style="margin-top:12px"><strong>Command:</strong></p>
-                    <pre class="cmd">${v.fix_command}</pre>
-                    <p><strong>Strategy:</strong> ${v.fix_strategy} &nbsp; <span class="badge ${v.fix_risk==='high'?'critical':'success'}">Risk: ${v.fix_risk}</span></p>
-                ` : '<p style="color:var(--text-dim)">No automated fix available for this package type.</p>'}
-            </div>
-            <div class="modal-footer">
-                <button class="btn" onclick="closeModal()">Cancel</button>
-                ${v.fix_command ? `
-                    <button class="btn" onclick="executeVulnFix(${v.id},true)">🔍 Dry Run</button>
-                    <button class="btn danger" onclick="executeVulnFix(${v.id},false)">⚡ Execute</button>
-                ` : ''}
-            </div>
-        `);
-    } catch(e) { toast('Failed to preview: ' + e.message, 'error'); }
-}
-
-async function executeVulnFix(vulnId, dryRun) {
-    closeModal();
-    toast(dryRun ? 'Running dry run...' : 'Executing fix...');
-    try {
-        const result = await apiPost('/api/remediate/vuln', { vuln_id: vulnId, dry_run: dryRun });
-        if (result.success) {
-            toast(dryRun ? 'Dry run OK — no changes made' : 'Fix applied successfully!');
-        } else {
-            toast('Fix failed: ' + (result.error || 'Unknown error'), 'error');
+        // Build credential profile options
+        let credOpts = '<option value="">-- Select Profile --</option>';
+        for (const p of credentialProfiles) {
+            credOpts += `<option value="${p.id}">${esc(p.name)} (${esc(p.ssh_user)})</option>`;
         }
-        showPage(currentPage);
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
 
-async function remediateHost(hostId) {
-    showModal(`
-        <div class="modal-header"><h3>🔧 Remediate All Vulns</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-        <div class="modal-body">
-            <p>This will attempt to fix all open vulnerabilities on this host.</p>
-            <p style="margin:12px 0"><strong>Recommended:</strong> Run a dry run first to preview changes.</p>
-        </div>
-        <div class="modal-footer">
-            <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn" onclick="closeModal();remediateHostFromDetail(${hostId},true)">🔍 Dry Run</button>
-            <button class="btn danger" onclick="closeModal();remediateHostFromDetail(${hostId},false)">⚡ Execute All</button>
-        </div>
-    `);
-}
+        // Build hypervisor host options
+        let hvOpts = '<option value="">-- Select Host --</option>';
+        for (const h of hosts) {
+            if (h.tags && (h.tags.includes('proxmox') || h.tags.includes('esxi'))) {
+                hvOpts += `<option value="${h.id}">${esc(h.name)} (${esc(h.address)})</option>`;
+            }
+        }
 
-async function remediateHostFromDetail(hostId, dryRun) {
-    toast(dryRun ? 'Running dry run...' : 'Executing fixes...');
-    try {
-        const results = await apiPost('/api/remediate/host', { host_id: hostId, dry_run: dryRun });
-        const success = results.filter(r => r.success).length;
-        toast(`${dryRun ? 'Dry run' : 'Remediation'}: ${success}/${results.length} fixes ${dryRun ? 'previewed' : 'applied'}`);
-        showHostDetail(hostId);
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
+        // Build credential profile table
+        let credRows = '';
+        for (const p of credentialProfiles) {
+            const authType = p.ssh_key_path ? 'Key' : 'Password';
+            credRows += `<tr>
+                <td><strong>${esc(p.name)}</strong></td>
+                <td>${esc(p.ssh_user)}</td>
+                <td>${authType}</td>
+                <td>
+                    <button class="btn sm" onclick="editCredProfile(${p.id})">Edit</button>
+                    <button class="btn sm danger" onclick="deleteCredProfile(${p.id})">Delete</button>
+                </td>
+            </tr>`;
+        }
 
-// ─── DISCOVERY ───
-async function renderDiscovery() {
-    let results = [];
-    try { results = await api('/api/discover/results'); } catch(e) {}
-    
-    const creds = await api('/api/credentials');
-    const credOpts = creds.map(c => `<option value="${c.id}">${c.name} (${c.ssh_user})</option>`).join('');
+        return `
+            <h2 style="margin-bottom:20px">Discovery</h2>
 
-    const rows = results.map(r => `
-        <tr>
-            <td>${r.address}</td>
-            <td>${r.hostname || '—'}</td>
-            <td>${r.os_guess || '—'}</td>
-            <td>${r.open_ports || '—'}</td>
-            <td>${r.ssh_accessible ? '✅' : '❌'}</td>
-            <td>${r.added_as_host ? '✅' : `<button class="btn sm primary" onclick="addDiscoveredHost('${r.address}','${r.hostname||r.address}')">+ Add</button>`}</td>
-        </tr>
-    `).join('');
-
-    return `
-        <div class="page-header"><h2>Network Discovery</h2></div>
-        <div class="panel">
-            <div class="panel-header"><h3>Subnet Scan</h3></div>
-            <div class="panel-body" style="padding:20px">
-                <div class="form-row">
+            <!-- Subnet Discovery -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>🌐 Subnet Discovery</h3>
+                </div>
+                <div style="padding:20px">
                     <div class="form-group">
                         <label>Subnet (CIDR)</label>
-                        <input id="disc-subnet" placeholder="10.0.0.0/24">
+                        <input type="text" id="disc-subnet" placeholder="192.168.4.0/24" style="width:300px">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="disc-quick"> Quick scan (ping only)
+                        </label>
                     </div>
                     <div class="form-group">
                         <label>Credential Profile (optional)</label>
-                        <select id="disc-cred"><option value="">None</option>${credOpts}</select>
+                        <select id="disc-cred-profile" style="width:300px">${credOpts}</select>
+                    </div>
+                    <div class="stack" style="margin-bottom:14px">
+                        <div class="inline-row">
+                            <label><input type="checkbox" id="disc-auto-add"> Auto-add discovered hosts</label>
+                            <label><input type="checkbox" id="disc-auto-scan"> Auto-scan imported hosts</label>
+                        </div>
+                        <div class="inline-row">
+                            <label>SNMP community</label>
+                            <input type="text" id="disc-snmp-community" placeholder="public" style="width:180px">
+                            <label>Version</label>
+                            <select id="disc-snmp-version" style="width:90px">
+                                <option value="2c" selected>2c</option>
+                                <option value="1">1</option>
+                                <option value="3">3</option>
+                            </select>
+                            <label>Port</label>
+                            <input type="number" id="disc-snmp-port" value="161" style="width:90px">
+                        </div>
+                        <div class="muted">Use SNMP for network gear fingerprinting, especially MikroTik/RouterOS boxes that do not speak SSH nicely.</div>
+                    </div>
+                    <button class="btn primary" onclick="runSubnetScan()">Discover Subnet</button>
+                    <div id="disc-status" style="margin-top:12px;color:var(--text-dim)"></div>
+                    
+                    <div id="disc-results" style="margin-top:20px"></div>
+                </div>
+            </div>
+
+            <!-- Credential Profiles -->
+            <div class="panel" style="margin-top:20px">
+                <div class="panel-header">
+                    <h3>🔑 Credential Profiles</h3>
+                    <button class="btn primary sm" onclick="showAddCredModal()">+ Add Profile</button>
+                </div>
+                <table>
+                    <tr><th>Name</th><th>Username</th><th>Auth Type</th><th>Actions</th></tr>
+                    ${credRows || '<tr><td colspan="4" class="empty">No credential profiles yet</td></tr>'}
+                </table>
+            </div>
+
+            <!-- Hypervisor Discovery -->
+            <div class="panel" style="margin-top:20px">
+                <div class="panel-header">
+                    <h3>☁️ Hypervisor Discovery</h3>
+                </div>
+                <div style="padding:20px">
+                    <div class="form-group">
+                        <label>Hypervisor Host</label>
+                        <select id="hv-host" style="width:300px">${hvOpts}</select>
+                    </div>
+                    <button class="btn primary" onclick="runHypervisorDiscovery()">Discover VMs/Containers</button>
+                    <div id="hv-status" style="margin-top:12px;color:var(--text-dim)"></div>
+                    
+                    <div id="hv-results" style="margin-top:20px"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function runSubnetScan() {
+        const subnet = document.getElementById('disc-subnet').value;
+        const quick = document.getElementById('disc-quick').checked;
+        const credProfileId = document.getElementById('disc-cred-profile').value || null;
+        const autoAdd = document.getElementById('disc-auto-add').checked;
+        const autoScan = document.getElementById('disc-auto-scan').checked;
+        const snmpCommunity = document.getElementById('disc-snmp-community').value.trim();
+        const snmpVersion = document.getElementById('disc-snmp-version').value;
+        const snmpPort = parseInt(document.getElementById('disc-snmp-port').value || '161', 10);
+        const statusEl = document.getElementById('disc-status');
+        const resultsEl = document.getElementById('disc-results');
+
+        if (!subnet) {
+            toast('Please enter a subnet');
+            return;
+        }
+
+        statusEl.textContent = 'Scanning...';
+        resultsEl.innerHTML = '';
+        discoveryResults = [];
+        discoveryUpserted = [];
+        discoveryScansStarted = [];
+
+        try {
+            const res = await api('POST', '/api/discover/subnet', {
+                subnet,
+                quick,
+                credential_profile_id: credProfileId,
+                snmp_community: snmpCommunity || null,
+                snmp_version: snmpVersion,
+                snmp_port: snmpPort,
+                auto_add: autoAdd,
+                auto_scan: autoScan
+            });
+            
+            discoveryResults = res.hosts || [];
+            discoveryUpserted = res.upserted || [];
+            discoveryScansStarted = res.scan_started || [];
+            const upserted = (res.upserted || []).length;
+            const scansStarted = (res.scan_started || []).length;
+            let status = `Found ${discoveryResults.length} hosts`;
+            if (upserted) status += `, upserted ${upserted}`;
+            if (scansStarted) status += `, started ${scansStarted} scans`;
+            statusEl.textContent = status;
+            
+            if (discoveryResults.length > 0) {
+                renderDiscoveryResults();
+            } else {
+                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No hosts found</p>';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    function renderDiscoveryResults() {
+        const resultsEl = document.getElementById('disc-results');
+        const getPlatformBadge = (host) => {
+            if (host.platform === 'routeros') return '<span class="badge medium">RouterOS</span>';
+            if (host.vendor === 'MikroTik') return '<span class="badge medium">MikroTik</span>';
+            if (host.platform) return `<span class="badge low">${esc(host.platform)}</span>`;
+            if (host.vendor) return `<span class="badge low">${esc(host.vendor)}</span>`;
+            return '—';
+        };
+
+        const getReachabilityBadges = (host) => {
+            const badges = [];
+            if (host.snmp_reachable) badges.push('<span class="badge success">SNMP</span>');
+            if (host.ssh_accessible) badges.push('<span class="badge low">SSH</span>');
+            return badges.length ? badges.join(' ') : '—';
+        };
+
+        const getActionBadges = (host) => {
+            const badges = [];
+            const upsert = discoveryUpserted.find(entry => entry.address === (host.address || host.ip));
+            const scan = discoveryScansStarted.find(entry => String(entry.host_id) === String(upsert?.host_id));
+            if (upsert?.status === 'created') badges.push('<span class="badge success">Imported</span>');
+            if (upsert?.status === 'updated') badges.push('<span class="badge medium">Updated</span>');
+            if (scan) badges.push('<span class="badge running">Scan started</span>');
+            return badges.length ? badges.join(' ') : '—';
+        };
+
+        let html = `
+            <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <button class="btn primary sm" onclick="bulkAddSelectedHosts()">Add Selected</button>
+                    <select id="bulk-cred-profile" style="margin-left:8px;width:200px">
+                        <option value="">-- Use Host Credentials --</option>
+                        ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="muted">Tip: use Auto-add above if you want discovery to import/update hosts automatically.</div>
+            </div>
+            <table>
+                <tr>
+                    <th><input type="checkbox" onclick="toggleAllDiscovered(this.checked)"></th>
+                    <th>IP</th>
+                    <th>Hostname</th>
+                    <th>OS</th>
+                    <th>Platform</th>
+                    <th>Reachability</th>
+                    <th>Services</th>
+                    <th>Version</th>
+                    <th>Actions</th>
+                </tr>`;
+        
+        for (let i = 0; i < discoveryResults.length; i++) {
+            const h = discoveryResults[i];
+            const services = Object.keys(h.services || {}).join(', ') || '—';
+            html += `<tr>
+                <td><input type="checkbox" class="disc-check" data-index="${i}"></td>
+                <td>${esc(h.ip)}</td>
+                <td>${esc(h.hostname || '—')}</td>
+                <td>${esc(h.os_name || 'Unknown')}</td>
+                <td>${getPlatformBadge(h)}</td>
+                <td>${getReachabilityBadges(h)}</td>
+                <td>${services}</td>
+                <td>${esc(h.version || h.routeros_version || '—')}</td>
+                <td>${getActionBadges(h)}</td>
+            </tr>`;
+        }
+        
+        html += '</table>';
+        resultsEl.innerHTML = html;
+    }
+
+    function toggleAllDiscovered(checked) {
+        document.querySelectorAll('.disc-check').forEach(cb => cb.checked = checked);
+    }
+
+    async function bulkAddSelectedHosts() {
+        const checks = document.querySelectorAll('.disc-check:checked');
+        if (checks.length === 0) {
+            toast('No hosts selected');
+            return;
+        }
+
+        const credProfileId = document.getElementById('bulk-cred-profile').value || null;
+        const hosts = [];
+        
+        checks.forEach(cb => {
+            const idx = parseInt(cb.dataset.index);
+            const h = discoveryResults[idx];
+            hosts.push({
+                name: h.hostname || h.ip,
+                address: h.ip,
+                ssh_user: h.ssh_user || 'root',
+                ssh_password: h.ssh_password,
+                ssh_key_path: h.ssh_key_path,
+                os_family: h.os_family || '',
+                os_name: h.os_name || '',
+                platform: h.platform || '',
+                vendor: h.vendor || '',
+                device_type: h.device_type || '',
+                version: h.version || h.routeros_version || '',
+                snmp_community: h.snmp_community || '',
+                snmp_version: h.snmp_version || '2c',
+                snmp_port: h.snmp_port || 161,
+                snmp_sysdescr: h.snmp_sysdescr || '',
+                snmp_sysobjectid: h.snmp_sysobjectid || '',
+                tags: []
+            });
+        });
+
+        try {
+            const res = await api('POST', '/api/hosts/bulk', {
+                hosts,
+                credential_profile_id: credProfileId
+            });
+            toast(`Added ${res.count} hosts`);
+            if (document.getElementById('disc-auto-add')?.checked) {
+                toast('Manual add is redundant when Auto-add is enabled, but at least now it keeps the device metadata.');
+            }
+            // Clear selection
+            checks.forEach(cb => cb.checked = false);
+        } catch (e) {
+            toast('Error: ' + e.message);
+        }
+    }
+
+    async function runHypervisorDiscovery() {
+        const hostId = document.getElementById('hv-host').value;
+        const statusEl = document.getElementById('hv-status');
+        const resultsEl = document.getElementById('hv-results');
+
+        if (!hostId) {
+            toast('Please select a hypervisor host');
+            return;
+        }
+
+        statusEl.textContent = 'Discovering...';
+        resultsEl.innerHTML = '';
+
+        try {
+            const res = await api('POST', '/api/discover/hypervisor', { host_id: hostId });
+            hypervisorResults = res.guests || [];
+            statusEl.textContent = `Found ${hypervisorResults.length} guests`;
+            
+            if (hypervisorResults.length > 0) {
+                renderHypervisorResults();
+            } else {
+                resultsEl.innerHTML = '<p style="color:var(--text-dim)">No guests found</p>';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    function renderHypervisorResults() {
+        const resultsEl = document.getElementById('hv-results');
+        let html = `
+            <div style="margin-bottom:12px">
+                <button class="btn primary sm" onclick="bulkAddSelectedGuests()">Add Selected</button>
+                <select id="guest-cred-profile" style="margin-left:8px;width:200px">
+                    <option value="">-- Use Default Credentials --</option>
+                    ${credentialProfiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+                </select>
+            </div>
+            <table>
+                <tr>
+                    <th><input type="checkbox" onclick="toggleAllGuests(this.checked)"></th>
+                    <th>Name</th>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                </tr>`;
+        
+        for (let i = 0; i < hypervisorResults.length; i++) {
+            const g = hypervisorResults[i];
+            html += `<tr>
+                <td><input type="checkbox" class="guest-check" data-index="${i}"></td>
+                <td>${esc(g.name)}</td>
+                <td>${esc(g.vmid || g.id || '—')}</td>
+                <td>${esc(g.status)}</td>
+                <td>${esc(g.ip || '—')}</td>
+            </tr>`;
+        }
+        
+        html += '</table>';
+        resultsEl.innerHTML = html;
+    }
+
+    function toggleAllGuests(checked) {
+        document.querySelectorAll('.guest-check').forEach(cb => cb.checked = checked);
+    }
+
+    async function bulkAddSelectedGuests() {
+        const checks = document.querySelectorAll('.guest-check:checked');
+        if (checks.length === 0) {
+            toast('No guests selected');
+            return;
+        }
+
+        const credProfileId = document.getElementById('guest-cred-profile').value || null;
+        const hosts = [];
+        
+        checks.forEach(cb => {
+            const idx = parseInt(cb.dataset.index);
+            const g = hypervisorResults[idx];
+            if (g.ip) {
+                hosts.push({
+                    name: g.name,
+                    address: g.ip,
+                    tags: ['vm']
+                });
+            }
+        });
+
+        if (hosts.length === 0) {
+            toast('Selected guests have no IP addresses');
+            return;
+        }
+
+        try {
+            const res = await api('POST', '/api/hosts/bulk', {
+                hosts,
+                credential_profile_id: credProfileId
+            });
+            toast(`Added ${res.count} hosts`);
+            checks.forEach(cb => cb.checked = false);
+        } catch (e) {
+            toast('Error: ' + e.message);
+        }
+    }
+
+    function showAddCredModal() {
+        const modal = prompt('Credential Profile Name:');
+        if (!modal || !modal.trim()) { toast('Profile name required'); return; }
+        const username = prompt('SSH Username:');
+        if (!username || !username.trim()) { toast('SSH username required'); return; }
+        const authType = confirm('Use SSH key? (Cancel for password)');
+        
+        let password = null;
+        let keyPath = null;
+        
+        if (authType) {
+            keyPath = prompt('SSH Key Path:', '/root/.ssh/id_rsa');
+        } else {
+            password = prompt('SSH Password:');
+        }
+        
+        api('POST', '/api/credentials', {
+            name: modal,
+            ssh_user: username,
+            ssh_password: password,
+            ssh_key_path: keyPath
+        }).then(() => {
+            toast('Credential profile added');
+            showPage('discovery');
+        }).catch(e => {
+            toast('Error: ' + e.message);
+        });
+    }
+
+    async function editCredProfile(id) {
+        const profile = await api('GET', `/api/credentials/${id}`);
+        const name = prompt('Credential Profile Name:', profile.name || '');
+        if (!name || !name.trim()) { toast('Profile name required'); return; }
+        const username = prompt('SSH Username:', profile.ssh_user || 'root');
+        if (!username || !username.trim()) { toast('SSH username required'); return; }
+        const useKey = confirm('Use SSH key? (Cancel for password)');
+        let ssh_password = null;
+        let ssh_key_path = null;
+        if (useKey) {
+            ssh_key_path = prompt('SSH Key Path:', profile.ssh_key_path || '/root/.ssh/id_rsa');
+        } else {
+            ssh_password = prompt('SSH Password (leave blank to clear):', profile.ssh_password || '');
+        }
+        await api('DELETE', `/api/credentials/${id}`);
+        await api('POST', '/api/credentials', { name, ssh_user: username, ssh_password, ssh_key_path });
+        toast('Credential profile updated');
+        showPage('discovery');
+    }
+
+    async function deleteCredProfile(id) {
+        if (!confirm('Delete this credential profile?')) return;
+        await api('DELETE', `/api/credentials/${id}`);
+        toast('Credential profile deleted');
+        showPage('discovery');
+    }
+
+    // --- Vulnerabilities ---
+    async function renderVulns(severity = null, hostId = null) {
+        let qp = '?status=open';
+        if (severity) qp += `&severity=${severity}`;
+        if (hostId) qp += `&host_id=${hostId}`;
+        const vulns = await api('GET', '/api/vulnerabilities' + qp);
+        const hosts = await api('GET', '/api/hosts');
+
+        let rows = '';
+        for (const v of vulns) {
+            rows += `<tr>
+                <td><span class="badge ${v.severity}">${v.severity}</span></td>
+                <td><strong>${esc(v.cve_id)}</strong></td>
+                <td>${esc(v.package_name)} <span style="color:var(--text-dim)">${esc(v.package_version)}</span></td>
+                <td>${esc(v.fixed_version || '—')}</td>
+                <td>${esc(v.host_name)}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.summary)}">${esc(v.summary)}</td>
+                <td>
+                    <select class="btn sm" onchange="updateVulnStatus(${v.id}, this.value)" style="width:auto">
+                        <option value="open" ${v.status==='open'?'selected':''}>Open</option>
+                        <option value="acknowledged" ${v.status==='acknowledged'?'selected':''}>Ack</option>
+                        <option value="false_positive" ${v.status==='false_positive'?'selected':''}>FP</option>
+                        <option value="fixed" ${v.status==='fixed'?'selected':''}>Fixed</option>
+                    </select>
+                </td>
+            </tr>`;
+        }
+
+        let hostOpts = '<option value="">All Hosts</option>';
+        for (const h of hosts) hostOpts += `<option value="${h.id}" ${hostId==h.id?'selected':''}>${esc(h.name)}</option>`;
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Vulnerabilities (${vulns.length})</h2>
+                <div class="filters">
+                    <select onchange="showVulnsFiltered()" id="filter-severity">
+                        <option value="">All Severities</option>
+                        <option value="critical" ${severity==='critical'?'selected':''}>Critical</option>
+                        <option value="high" ${severity==='high'?'selected':''}>High</option>
+                        <option value="medium" ${severity==='medium'?'selected':''}>Medium</option>
+                        <option value="low" ${severity==='low'?'selected':''}>Low</option>
+                    </select>
+                    <select onchange="showVulnsFiltered()" id="filter-host">${hostOpts}</select>
+                </div>
+            </div>
+            <div class="panel">
+                <table>
+                    <tr><th>Severity</th><th>CVE</th><th>Package</th><th>Fix</th><th>Host</th><th>Summary</th><th>Status</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No vulnerabilities found 🎉</td></tr>'}
+                </table>
+            </div>
+        `;
+    }
+
+    async function showVulnsFiltered() {
+        const sev = document.getElementById('filter-severity')?.value || null;
+        const host = document.getElementById('filter-host')?.value || null;
+        document.getElementById('content').innerHTML = await renderVulns(sev, host);
+    }
+
+    // --- Scans ---
+    async function renderScans() {
+        const scans = await api('GET', '/api/scans?limit=50');
+        let rows = '';
+        for (const s of scans) {
+            const duration = s.finished_at ? timeDiff(s.started_at, s.finished_at) : '—';
+            rows += `<tr>
+                <td>${s.id}</td>
+                <td>${esc(s.host_name)}</td>
+                <td><span class="badge ${s.status}">${s.status}</span></td>
+                <td>${s.packages_found}</td>
+                <td>${s.vulns_found}</td>
+                <td>${duration}</td>
+                <td>${timeAgo(s.started_at)}</td>
+            </tr>`;
+        }
+        return `
+            <h2 style="margin-bottom:20px">Scan History</h2>
+            <div class="panel">
+                <table>
+                    <tr><th>#</th><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>Duration</th><th>When</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No scans yet</td></tr>'}
+                </table>
+            </div>
+        `;
+    }
+
+    async function renderLogs() {
+        const [discoveries, remediations, scans] = await Promise.all([
+            api('GET', '/api/discover/results'),
+            api('GET', '/api/remediate/history?limit=50'),
+            api('GET', '/api/scans?limit=50'),
+        ]);
+
+        const discoveryEntries = discoveries.slice(0, 50).map(d => `
+            <div class="log-entry">
+                <div class="title">
+                    <strong>${esc(d.hostname || d.address || 'Discovered host')}</strong>
+                    <span class="badge ${d.platform === 'routeros' ? 'running' : 'success'}">${esc(d.platform || d.discovery_method || 'discovery')}</span>
+                </div>
+                <div class="meta">${timeAgo(d.discovered_at)} • ${esc(d.address || 'unknown address')}</div>
+                <div class="body">Vendor: ${esc(d.vendor || '—')} | Type: ${esc(d.device_type || '—')} | Version: ${esc(d.version || '—')} | SNMP: ${esc(d.snmp_sysdescr || '—')}</div>
+            </div>
+        `).join('');
+
+        const remediationEntries = remediations.slice(0, 50).map(r => `
+            <div class="log-entry">
+                <div class="title">
+                    <strong>${esc(r.host_name || r.host_address || 'Remediation')}</strong>
+                    <span class="badge ${r.status === 'success' ? 'success' : r.status === 'failed' ? 'failed' : 'running'}">${esc(r.status || 'unknown')}</span>
+                </div>
+                <div class="meta">${timeAgo(r.executed_at || r.created_at)} • ${esc(r.remediation_type || 'remediation')}</div>
+                <div class="body">${esc(r.summary || r.command || r.details || 'No details captured')}</div>
+            </div>
+        `).join('');
+
+        const scanEntries = scans.slice(0, 50).map(s => `
+            <div class="log-entry">
+                <div class="title">
+                    <strong>${esc(s.host_name || s.address || `Host #${s.host_id || '?'}`)}</strong>
+                    <span class="badge ${s.status === 'completed' ? 'completed' : s.status === 'failed' ? 'failed' : 'running'}">${esc(s.status || 'unknown')}</span>
+                </div>
+                <div class="meta">${timeAgo(s.started_at || s.created_at)}${s.finished_at ? ` • ${esc(timeDiff(s.started_at, s.finished_at))}` : ''}</div>
+                <div class="body">Packages: ${esc(String(s.packages_found ?? 0))} | Vulns: ${esc(String(s.vulns_found ?? 0))}${s.error_message ? `\nError: ${esc(s.error_message)}` : ''}</div>
+            </div>
+        `).join('');
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Operational Logs</h2>
+                <button class="btn" onclick="showPage('logs')">Refresh</button>
+            </div>
+            <div class="log-grid">
+                <div class="panel">
+                    <div class="panel-header"><h2>Discovery Activity</h2></div>
+                    <div class="log-list">${discoveryEntries || '<div class="empty">No discovery history yet</div>'}</div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header"><h2>Scan Activity</h2></div>
+                    <div class="log-list">${scanEntries || '<div class="empty">No scan history yet</div>'}</div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header"><h2>Remediation Activity</h2></div>
+                    <div class="log-list">${remediationEntries || '<div class="empty">No remediation history yet</div>'}</div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><h2>Scheduler Status</h2></div>
+                <div style="padding:16px 20px" class="muted">
+                    Schedules are now first-class in the GUI. This page is for activity visibility, while the <strong>Schedules</strong> page handles creation, enable/disable, and run-now actions.
+                </div>
+            </div>
+        `;
+    }
+
+    async function renderSchedules() {
+        const [schedules, hosts] = await Promise.all([
+            api('GET', '/api/schedules'),
+            api('GET', '/api/hosts'),
+        ]);
+
+        let rows = '';
+        for (const s of schedules) {
+            rows += `<tr>
+                <td><strong>${esc(s.name)}</strong></td>
+                <td>${esc(s.host_name || 'All enabled hosts')}</td>
+                <td><code>${esc(s.cron_expr)}</code></td>
+                <td>${s.next_run ? timeAgo(s.next_run) : 'Unknown'}</td>
+                <td>${s.last_run ? timeAgo(s.last_run) : 'Never'}</td>
+                <td><span class="badge ${s.enabled ? 'success' : 'unknown'}">${s.enabled ? 'enabled' : 'disabled'}</span></td>
+                <td>
+                    <button class="btn sm" onclick="runSchedule(${s.id})">Run now</button>
+                    <button class="btn sm" onclick="toggleSchedule(${s.id}, ${s.enabled ? 'false' : 'true'})">${s.enabled ? 'Disable' : 'Enable'}</button>
+                    <button class="btn sm danger" onclick="deleteSchedule(${s.id})">Delete</button>
+                </td>
+            </tr>`;
+        }
+
+        window._scheduleHosts = hosts;
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Scan Schedules</h2>
+                <button class="btn primary" onclick="showAddScheduleModal()">+ Add Schedule</button>
+            </div>
+            <div class="panel">
+                <table>
+                    <tr><th>Name</th><th>Target</th><th>Cron</th><th>Next Run</th><th>Last Run</th><th>Status</th><th>Actions</th></tr>
+                    ${rows || '<tr><td colspan="7" class="empty">No schedules configured yet</td></tr>'}
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><h2>Scheduler Notes</h2></div>
+                <div style="padding:16px 20px" class="muted">
+                    Schedules are now stored in VulnScan itself. Cron strings are accepted directly. Next-run prediction currently supports daily schedules and simple minute intervals.
+                </div>
+            </div>
+        `;
+    }
+
+    async function renderCompliance() {
+        const [compliance, policies] = await Promise.all([
+            api('GET', '/api/compliance'),
+            api('GET', '/api/policies'),
+        ]);
+
+        const results = compliance.results || [];
+        const policyRows = results.map(r => `
+            <tr>
+                <td><strong>${esc(r.policy_name || r.policy_id)}</strong><br><span class="muted">${esc(r.policy_id)}</span></td>
+                <td><span class="badge ${r.policy_severity || 'medium'}">${esc(r.policy_severity || 'medium')}</span></td>
+                <td><span class="badge ${r.compliant ? 'success' : 'failed'}">${r.compliant ? 'pass' : 'fail'}</span></td>
+                <td>${esc(r.message || '—')}</td>
+                <td>${esc(String((r.violations || []).length))}</td>
+            </tr>
+        `).join('');
+
+        const failed = results.filter(r => !r.compliant);
+        const failedHtml = failed.map(r => `
+            <div class="violation-item">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+                    <strong>${esc(r.policy_name || r.policy_id)}</strong>
+                    <span class="badge failed">${esc(r.policy_severity || 'medium')}</span>
+                </div>
+                <div class="muted" style="margin-top:6px">${esc(r.message || 'Policy failed')}</div>
+            </div>
+        `).join('');
+
+        const policyCatalog = policies.map(p => `
+            <tr>
+                <td><strong>${esc(p.name)}</strong><br><span class="muted">${esc(p.policy_id)}</span></td>
+                <td><span class="badge ${p.severity || 'medium'}">${esc(p.severity || 'medium')}</span></td>
+                <td>${esc(p.description || '—')}</td>
+            </tr>
+        `).join('');
+
+        const policyEditors = policies.map(p => `
+            <div class="policy-editor">
+                <div>
+                    <strong>${esc(p.name)}</strong><br>
+                    <span class="muted">${esc(p.policy_id)} • ${esc(p.threshold_kind || 'threshold')}</span>
+                </div>
+                <label class="muted"><input type="checkbox" id="policy-enabled-${esc(p.policy_id)}" ${p.enabled ? 'checked' : ''}> Enabled</label>
+                <input type="number" id="policy-threshold-${esc(p.policy_id)}" value="${esc(String(p.threshold ?? ''))}">
+                <button class="btn sm primary" onclick="savePolicySetting('${esc(p.policy_id)}')">Save</button>
+            </div>
+        `).join('');
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Compliance</h2>
+                <div class="inline-row">
+                    <button class="btn" onclick="window.open('/api/compliance/report?format=csv', '_blank')">Export CSV</button>
+                    <button class="btn" onclick="showPage('compliance')">Refresh</button>
+                </div>
+            </div>
+            <div class="compliance-grid">
+                <div class="stat-card ${compliance.overall_compliant ? '' : 'critical'}">
+                    <div class="label">Overall Status</div>
+                    <div class="value">${compliance.overall_compliant ? 'PASS' : 'FAIL'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Policies Evaluated</div>
+                    <div class="value">${esc(String(compliance.policies_evaluated || 0))}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Passed</div>
+                    <div class="value">${esc(String(compliance.policies_passed || 0))}</div>
+                </div>
+                <div class="stat-card critical">
+                    <div class="label">Failed</div>
+                    <div class="value">${esc(String(compliance.policies_failed || 0))}</div>
+                </div>
+            </div>
+            <div class="log-grid">
+                <div class="panel">
+                    <div class="panel-header"><h2>Policy Results</h2></div>
+                    <table>
+                        <tr><th>Policy</th><th>Severity</th><th>Status</th><th>Message</th><th>Violations</th></tr>
+                        ${policyRows || '<tr><td colspan="5" class="empty">No policy results</td></tr>'}
+                    </table>
+                </div>
+                <div class="panel">
+                    <div class="panel-header"><h2>Current Failures</h2></div>
+                    <div style="padding:16px 20px">
+                        <div class="violation-list">${failedHtml || '<div class="empty">Everything is compliant. Miracles happen.</div>'}</div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label><input type="checkbox" id="disc-quick" checked> Quick scan (ping only, no port scan)</label>
-                </div>
-                <div class="btn-group">
-                    <button class="btn primary" onclick="runDiscovery()">🔎 Scan Subnet</button>
-                </div>
-                <div id="disc-status" style="margin-top:12px"></div>
             </div>
-        </div>
-        <div class="panel">
-            <div class="panel-header">
-                <h3>Discovery Results (${results.length})</h3>
-                ${results.length ? `<button class="btn sm primary" onclick="bulkAddDiscovered()">+ Add All SSH-Accessible</button>` : ''}
-            </div>
-            <div class="panel-body">
+            <div class="panel">
+                <div class="panel-header"><h2>Policy Catalog</h2></div>
                 <table>
-                    <tr><th>Address</th><th>Hostname</th><th>OS</th><th>Ports</th><th>SSH</th><th>Action</th></tr>
-                    ${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No discovery results. Run a subnet scan above.</td></tr>'}
+                    <tr><th>Policy</th><th>Severity</th><th>Description</th></tr>
+                    ${policyCatalog || '<tr><td colspan="3" class="empty">No policies loaded</td></tr>'}
                 </table>
             </div>
-        </div>
-    `;
-}
-
-async function runDiscovery() {
-    const subnet = document.getElementById('disc-subnet').value;
-    if (!subnet) { toast('Enter a subnet', 'error'); return; }
-    const credId = document.getElementById('disc-cred').value;
-    const quick = document.getElementById('disc-quick').checked;
-    const el = document.getElementById('disc-status');
-    el.innerHTML = '<span class="spinner"></span> Scanning subnet... this may take a while';
-    try {
-        const result = await apiPost('/api/discover/subnet', {
-            subnet, quick,
-            credential_profile_id: credId ? parseInt(credId) : undefined
-        });
-        el.innerHTML = `<span class="badge success">✅ Found ${result.hosts?.length || 0} hosts</span>`;
-        toast(`Discovery found ${result.hosts?.length || 0} hosts`);
-        showPage('discovery');
-    } catch(e) { el.innerHTML = `<span class="badge failed">Failed: ${e.message}</span>`; }
-}
-
-async function addDiscoveredHost(addr, name) {
-    try {
-        await apiPost('/api/hosts', { name, address: addr, ssh_user: 'root' });
-        toast(`Added ${addr}`);
-        showPage('discovery');
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function bulkAddDiscovered() {
-    try {
-        const results = await api('/api/discover/results');
-        const sshHosts = results.filter(r => r.ssh_accessible && !r.added_as_host);
-        if (!sshHosts.length) { toast('No new SSH-accessible hosts to add', 'error'); return; }
-        const hosts = sshHosts.map(r => ({ name: r.hostname || r.address, address: r.address }));
-        await apiPost('/api/hosts/bulk', { hosts });
-        toast(`Added ${hosts.length} hosts`);
-        showPage('discovery');
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-// ─── SCAN HISTORY ───
-async function renderScans() {
-    const scans = await api('/api/scans?limit=100');
-    const rows = scans.map(s => `
-        <tr>
-            <td>${s.host_name}</td>
-            <td><span class="badge ${s.status}">${s.status}</span></td>
-            <td>${s.packages_found}</td>
-            <td>${s.vulns_found}</td>
-            <td>${timeAgo(s.started_at)}</td>
-            <td>${s.error || '—'}</td>
-        </tr>
-    `).join('');
-
-    return `
-        <div class="page-header"><h2>Scan History</h2></div>
-        <div class="panel"><div class="panel-body">
-            <table>
-                <tr><th>Host</th><th>Status</th><th>Packages</th><th>Vulns</th><th>When</th><th>Error</th></tr>
-                ${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No scans yet</td></tr>'}
-            </table>
-        </div></div>
-    `;
-}
-
-// ─── COMPLIANCE ───
-async function renderCompliance() {
-    let comp = {};
-    try { comp = await api('/api/compliance'); } catch(e) { return `<div class="empty-state"><div class="icon">❌</div><p>Failed to load compliance data</p></div>`; }
-    
-    const policyCards = (comp.results || []).map(p => `
-        <div class="compliance-card ${p.compliant ? 'pass' : 'fail'}">
-            <div>
-                <strong>${p.policy_name}</strong>
-                <div style="color:var(--text-dim);font-size:13px;margin-top:4px">${p.message}</div>
+            <div class="panel">
+                <div class="panel-header"><h2>Policy Editor</h2></div>
+                <div>${policyEditors || '<div class="empty">No editable policies</div>'}</div>
             </div>
-            <div>
-                <span class="badge ${p.compliant ? 'success' : p.policy_severity}">${p.compliant ? 'PASS' : 'FAIL'}</span>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }
 
-    const score = comp.policies_passed || 0;
-    const total = comp.policies_evaluated || 0;
-    const pct = total ? Math.round(score / total * 100) : 0;
-
-    return `
-        <div class="page-header">
-            <h2>Compliance</h2>
-            <button class="btn" onclick="downloadComplianceCSV()">📥 Export CSV</button>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card ${comp.overall_compliant ? 'success' : 'critical'}">
-                <div class="label">Overall Status</div>
-                <div class="value" style="font-size:20px">${comp.overall_compliant ? '✅ Compliant' : '❌ Non-Compliant'}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Score</div>
-                <div class="value">${score}/${total}</div>
-                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--critical)'}"></div></div>
-            </div>
-            <div class="stat-card success"><div class="label">Passed</div><div class="value">${score}</div></div>
-            <div class="stat-card critical"><div class="label">Failed</div><div class="value">${total - score}</div></div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h3>Policy Results</h3></div>
-            <div class="panel-body" style="padding:16px">
-                ${policyCards || '<p style="color:var(--text-dim)">No policies defined</p>'}
-            </div>
-        </div>
-    `;
-}
-
-async function downloadComplianceCSV() {
-    try {
-        const r = await fetch(API + '/api/compliance/report?format=csv', { headers: authHeaders() });
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'compliance_report.csv'; a.click();
-        URL.revokeObjectURL(url);
-    } catch(e) { toast('Failed to export', 'error'); }
-}
-
-// ─── SETTINGS (Credential Profiles) ───
-async function renderSettings() {
-    const creds = await api('/api/credentials');
-    const rows = creds.map(c => `
-        <tr>
-            <td>${c.name}</td>
-            <td>${c.ssh_user}</td>
-            <td>${c.ssh_password ? '••••••' : '—'}</td>
-            <td>${c.ssh_key_path || '—'}</td>
-            <td><button class="btn sm danger" onclick="deleteCredProfile(${c.id})">🗑️</button></td>
-        </tr>
-    `).join('');
-
-    return `
-        <div class="page-header">
-            <h2>Settings</h2>
-        </div>
-        <div class="panel">
-            <div class="panel-header">
-                <h3>Credential Profiles</h3>
-                <button class="btn sm primary" onclick="showAddCredModal()">+ Add Profile</button>
-            </div>
-            <div class="panel-body">
-                <table>
-                    <tr><th>Name</th><th>SSH User</th><th>Password</th><th>Key Path</th><th>Action</th></tr>
-                    ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No credential profiles. Add one for easy host provisioning.</td></tr>'}
-                </table>
-            </div>
-        </div>
-    `;
-}
-
-function showAddCredModal() {
-    showModal(`
-        <div class="modal-header"><h3>Add Credential Profile</h3><button class="close-btn" onclick="closeModal()">✕</button></div>
-        <div class="modal-body">
-            <div class="form-group"><label>Profile Name</label><input id="cp-name" placeholder="e.g. proxmox-root"></div>
-            <div class="form-row">
-                <div class="form-group"><label>SSH User</label><input id="cp-user" value="root"></div>
-                <div class="form-group"><label>SSH Password</label><input id="cp-pass" type="password"></div>
-            </div>
-            <div class="form-group"><label>SSH Key Path (optional)</label><input id="cp-key" placeholder="/root/.ssh/id_rsa"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn primary" onclick="addCredProfile()">Add</button>
-        </div>
-    `);
-}
-
-async function addCredProfile() {
-    const data = {
-        name: document.getElementById('cp-name').value,
-        ssh_user: document.getElementById('cp-user').value,
-        ssh_password: document.getElementById('cp-pass').value || undefined,
-        ssh_key_path: document.getElementById('cp-key').value || undefined
-    };
-    if (!data.name || !data.ssh_user) { toast('Name and user required', 'error'); return; }
-    try {
-        await apiPost('/api/credentials', data);
+    // --- Actions ---
+    async function addHost() {
+        const hostId = document.getElementById('host-id').value;
+        const data = {
+            name: document.getElementById('host-name').value,
+            address: document.getElementById('host-address').value,
+            ssh_user: document.getElementById('host-user').value || 'root',
+            ssh_password: document.getElementById('host-password').value || null,
+            ssh_key_path: document.getElementById('host-keypath').value || null,
+            ssh_port: parseInt(document.getElementById('host-port').value) || 22,
+            platform: document.getElementById('host-platform').value || '',
+            vendor: document.getElementById('host-vendor').value || '',
+            device_type: document.getElementById('host-device-type').value || '',
+            version: document.getElementById('host-version').value || '',
+            snmp_community: document.getElementById('host-snmp-community').value || null,
+            snmp_version: document.getElementById('host-snmp-version').value || '2c',
+            snmp_port: parseInt(document.getElementById('host-snmp-port').value) || 161,
+            tags: document.getElementById('host-tags').value.split(',').map(s => s.trim()).filter(Boolean),
+        };
+        if (!data.name || !data.address) { toast('Name and address required'); return; }
+        if (hostId) {
+            await api('PUT', `/api/hosts/${hostId}`, data);
+        } else {
+            await api('POST', '/api/hosts', data);
+        }
         closeModal();
-        toast('Credential profile added');
-        showPage('settings');
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
+        toast(hostId ? 'Host updated' : 'Host added');
+        showPage('hosts');
+    }
 
-async function deleteCredProfile(id) {
-    if (!confirm('Delete this credential profile?')) return;
-    try {
-        await fetch(API + `/api/credentials/${id}`, { method: 'DELETE', headers: authHeaders() });
-        toast('Deleted');
-        showPage('settings');
-    } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
+    async function editHost(id) {
+        const host = await api('GET', `/api/hosts/${id}`);
+        document.getElementById('hostModalTitle').textContent = 'Edit Host';
+        document.getElementById('host-id').value = host.id;
+        document.getElementById('host-name').value = host.name || '';
+        document.getElementById('host-address').value = host.address || '';
+        document.getElementById('host-user').value = host.ssh_user || 'root';
+        document.getElementById('host-password').value = host.ssh_password || '';
+        document.getElementById('host-keypath').value = host.ssh_key_path || '';
+        document.getElementById('host-port').value = host.ssh_port || 22;
+        document.getElementById('host-platform').value = host.platform || '';
+        document.getElementById('host-vendor').value = host.vendor || '';
+        document.getElementById('host-device-type').value = host.device_type || '';
+        document.getElementById('host-version').value = host.version || '';
+        document.getElementById('host-snmp-community').value = host.snmp_community || '';
+        document.getElementById('host-snmp-version').value = host.snmp_version || '2c';
+        document.getElementById('host-snmp-port').value = host.snmp_port || 161;
+        document.getElementById('host-tags').value = host.tags || '';
+        document.getElementById('addHostModal').classList.add('active');
+    }
 
-// ─── INIT ───
-showPage('dashboard');
-setInterval(() => { if (currentPage === 'dashboard') showPage('dashboard'); }, 30000);
-</script>
+    async function toggleHostEnabled(id, enabled) {
+        await api('PUT', `/api/hosts/${id}`, { enabled: enabled ? 1 : 0 });
+        toast(`Host ${enabled ? 'enabled' : 'disabled'}`);
+        showPage('hosts');
+    }
+
+    function showAddScheduleModal() {
+        const modal = document.getElementById('addScheduleModal');
+        const select = document.getElementById('schedule-host');
+        const hosts = window._scheduleHosts || [];
+        select.innerHTML = '<option value="">All enabled hosts</option>' + hosts.map(h => `<option value="${h.id}">${esc(h.name)} (${esc(h.address)})</option>`).join('');
+        modal.classList.add('active');
+    }
+
+    function closeScheduleModal() {
+        document.getElementById('addScheduleModal').classList.remove('active');
+    }
+
+    async function addSchedule() {
+        const data = {
+            name: document.getElementById('schedule-name').value,
+            host_id: document.getElementById('schedule-host').value || null,
+            cron_expr: document.getElementById('schedule-cron').value,
+            enabled: true,
+        };
+        if (!data.name || !data.cron_expr) {
+            toast('Name and cron expression required');
+            return;
+        }
+        await api('POST', '/api/schedules', data);
+        closeScheduleModal();
+        toast('Schedule created');
+        showPage('schedules');
+    }
+
+    async function toggleSchedule(id, enabled) {
+        await api('PUT', `/api/schedules/${id}`, { enabled: enabled === 'true' });
+        toast(`Schedule ${enabled === 'true' ? 'enabled' : 'disabled'}`);
+        showPage('schedules');
+    }
+
+    async function runSchedule(id) {
+        await api('POST', '/api/schedules/run', { schedule_id: id });
+        toast('Scheduled scan started');
+        showPage('schedules');
+    }
+
+    async function deleteSchedule(id) {
+        if (!confirm('Delete this schedule?')) return;
+        await api('DELETE', `/api/schedules/${id}`);
+        toast('Schedule deleted');
+        showPage('schedules');
+    }
+
+    async function savePolicySetting(policyId) {
+        const enabled = document.getElementById(`policy-enabled-${policyId}`).checked;
+        const threshold = document.getElementById(`policy-threshold-${policyId}`).value;
+        await api('POST', '/api/policies/settings', {
+            policy_id: policyId,
+            enabled,
+            threshold: threshold === '' ? null : parseInt(threshold),
+        });
+        toast('Policy updated');
+        showPage('compliance');
+    }
+
+    async function deleteHost(id) {
+        if (!confirm('Delete this host and all its data?')) return;
+        await api('DELETE', `/api/hosts/${id}`);
+        toast('Host deleted');
+        showPage('hosts');
+    }
+
+    async function scanHost(id) {
+        toast('Scan started...');
+        await api('POST', '/api/scan', { host_id: id });
+        // Poll for completion
+        pollScans();
+    }
+
+    async function showHostDetails(id) {
+        const modal = document.getElementById('hostDetailsModal');
+        const title = document.getElementById('hostDetailsTitle');
+        const body = document.getElementById('hostDetailsBody');
+        modal.classList.add('active');
+        body.innerHTML = '<div class="muted">Loading...</div>';
+
+        try {
+            const data = await api('GET', `/api/hosts/${id}/details`);
+            const host = data.host || {};
+            title.textContent = `Host Details: ${host.name || host.address || id}`;
+
+            const factsRows = (data.device_facts || []).map(f => `
+                <tr>
+                    <td>${esc(f.fact_key)}</td>
+                    <td>${esc(f.fact_value || '—')}</td>
+                    <td>${esc(f.source || '—')}</td>
+                    <td>${esc(f.collected_at || '—')}</td>
+                </tr>
+            `).join('');
+
+            const vulnRows = (data.vulnerabilities || []).slice(0, 20).map(v => `
+                <tr>
+                    <td>${esc(v.cve_id)}</td>
+                    <td><span class="badge ${esc(v.severity || 'unknown')}">${esc(v.severity || 'unknown')}</span></td>
+                    <td>${esc(v.package_name || '—')}</td>
+                    <td>${esc(v.fixed_version || '—')}</td>
+                </tr>
+            `).join('');
+
+            const pkgRows = (data.packages || []).slice(0, 20).map(p => `
+                <tr>
+                    <td>${esc(p.name)}</td>
+                    <td>${esc(p.version)}</td>
+                    <td>${esc(p.pkg_type || '—')}</td>
+                    <td>${esc(p.source_path || '—')}</td>
+                </tr>
+            `).join('');
+
+            const scanRows = (data.scans || []).slice(0, 10).map(s => `
+                <tr>
+                    <td>${esc(s.started_at || '—')}</td>
+                    <td><span class="badge ${esc(s.status || 'unknown')}">${esc(s.status || 'unknown')}</span></td>
+                    <td>${esc(String(s.packages_found ?? '—'))}</td>
+                    <td>${esc(String(s.vulns_found ?? '—'))}</td>
+                </tr>
+            `).join('');
+
+            body.innerHTML = `
+                <div class="panel" style="margin-bottom:16px">
+                    <div class="panel-header"><h2>Overview</h2></div>
+                    <div style="padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;font-size:13px">
+                        <div><strong>Address:</strong> ${esc(host.address || '—')}</div>
+                        <div><strong>Name:</strong> ${esc(host.name || '—')}</div>
+                        <div><strong>Platform:</strong> ${esc(host.platform || '—')}</div>
+                        <div><strong>Vendor:</strong> ${esc(host.vendor || '—')}</div>
+                        <div><strong>Device type:</strong> ${esc(host.device_type || '—')}</div>
+                        <div><strong>Version:</strong> ${esc(host.version || '—')}</div>
+                        <div><strong>OS:</strong> ${esc(host.os_name || '—')}</div>
+                        <div><strong>Last scan:</strong> ${esc(host.last_scan || 'Never')}</div>
+                        <div><strong>SNMP sysDescr:</strong> ${esc(host.snmp_sysdescr || '—')}</div>
+                        <div><strong>SNMP sysObjectID:</strong> ${esc(host.snmp_sysobjectid || '—')}</div>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-bottom:16px">
+                    <div class="panel-header"><h2>Device Facts</h2></div>
+                    <table>
+                        <tr><th>Key</th><th>Value</th><th>Source</th><th>Collected</th></tr>
+                        ${factsRows || '<tr><td colspan="4" class="empty">No device facts yet</td></tr>'}
+                    </table>
+                </div>
+
+                <div class="panel" style="margin-bottom:16px">
+                    <div class="panel-header"><h2>Open Vulnerabilities</h2></div>
+                    <table>
+                        <tr><th>ID</th><th>Severity</th><th>Package</th><th>Fixed Version</th></tr>
+                        ${vulnRows || '<tr><td colspan="4" class="empty">No open vulnerabilities</td></tr>'}
+                    </table>
+                </div>
+
+                <div class="panel" style="margin-bottom:16px">
+                    <div class="panel-header"><h2>Latest Packages</h2></div>
+                    <table>
+                        <tr><th>Name</th><th>Version</th><th>Type</th><th>Source</th></tr>
+                        ${pkgRows || '<tr><td colspan="4" class="empty">No package inventory yet</td></tr>'}
+                    </table>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header"><h2>Recent Scans</h2></div>
+                    <table>
+                        <tr><th>Started</th><th>Status</th><th>Packages</th><th>Vulns</th></tr>
+                        ${scanRows || '<tr><td colspan="4" class="empty">No scans yet</td></tr>'}
+                    </table>
+                </div>
+            `;
+        } catch (e) {
+            body.innerHTML = `<div class="empty">Failed to load host details: ${esc(e.message)}</div>`;
+        }
+    }
+
+    async function scanAll() {
+        toast('Scanning all hosts...');
+        await api('POST', '/api/scan');
+        pollScans();
+    }
+
+    async function updateVulnStatus(id, status) {
+        await api('PUT', `/api/vulnerabilities/${id}/status`, { status });
+        toast(`Vulnerability marked as ${status}`);
+    }
+
+    function pollScans() {
+        let polls = 0;
+        const interval = setInterval(async () => {
+            polls++;
+            if (polls > 60) { clearInterval(interval); return; }
+            if (currentPage === 'dashboard') await showPage('dashboard');
+            if (currentPage === 'scans') await showPage('scans');
+            // Check if any scans are still running
+            const scans = await api('GET', '/api/scans?limit=5');
+            const running = scans.some(s => s.status === 'running');
+            if (!running) {
+                clearInterval(interval);
+                toast('Scan complete!');
+                showPage(currentPage);
+            }
+        }, 5000);
+    }
+
+    function closeModal() {
+        document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+        const title = document.getElementById('hostModalTitle');
+        if (title) title.textContent = 'Add Host';
+        const hostId = document.getElementById('host-id');
+        if (hostId) hostId.value = '';
+        ['host-name','host-address','host-user','host-password','host-keypath','host-vendor','host-device-type','host-version','host-snmp-community','host-tags'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        if (document.getElementById('host-user')) document.getElementById('host-user').value = 'root';
+        if (document.getElementById('host-port')) document.getElementById('host-port').value = 22;
+        if (document.getElementById('host-platform')) document.getElementById('host-platform').value = '';
+        if (document.getElementById('host-snmp-version')) document.getElementById('host-snmp-version').value = '2c';
+        if (document.getElementById('host-snmp-port')) document.getElementById('host-snmp-port').value = 161;
+    }
+
+    let logRefreshTimer = null;
+    function manageAutoRefresh(page) {
+        if (logRefreshTimer) {
+            clearInterval(logRefreshTimer);
+            logRefreshTimer = null;
+        }
+        if (page === 'logs') {
+            logRefreshTimer = setInterval(() => {
+                if (currentPage === 'logs') showPage('logs');
+            }, 15000);
+        }
+    }
+
+    // --- Helpers ---
+    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+    function timeAgo(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+        const s = Math.floor((Date.now() - d) / 1000);
+        if (s < 60) return 'just now';
+        if (s < 3600) return Math.floor(s/60) + 'm ago';
+        if (s < 86400) return Math.floor(s/3600) + 'h ago';
+        return Math.floor(s/86400) + 'd ago';
+    }
+
+    function timeDiff(a, b) {
+        const da = new Date(a.endsWith('Z') ? a : a + 'Z');
+        const db = new Date(b.endsWith('Z') ? b : b + 'Z');
+        const s = Math.floor((db - da) / 1000);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+        return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+    }
+
+    // Init
+    showPage('dashboard');
+    // Auto-refresh dashboard every 30s
+    setInterval(() => { if (currentPage === 'dashboard') showPage('dashboard'); }, 30000);
+    </script>
 </body>
 </html>

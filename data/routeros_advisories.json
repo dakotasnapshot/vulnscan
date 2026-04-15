@@ -1,0 +1,73 @@
+[
+  {
+    "id": "ROUTEROS-TRACK-CHANGETRACK",
+    "title": "Track RouterOS security-relevant release changes via MikroTik changelogs",
+    "summary": "Curated RouterOS advisory tracking entry. MikroTik changelogs are the primary operational source for version and fix tracking when formal CVE mapping is incomplete. Treat versions below the tracked fixed release as needing manual review against changelog/security notes.",
+    "severity": "medium",
+    "cvss_score": null,
+    "fixed_version": "7.21.0",
+    "source": "mikrotik-changelog-curated",
+    "confidence": "medium",
+    "notes": [
+      "MikroTik often communicates fixes through release/changelog channels rather than a rich machine-readable advisory feed.",
+      "Use this entry as a baseline operational warning until issue-specific entries are curated."
+    ],
+    "references": [
+      "https://mikrotik.com/download/changelogs",
+      "https://help.mikrotik.com/docs/"
+    ],
+    "affected": [
+      {
+        "introduced": "7.0.0",
+        "fixed": "7.21.0"
+      }
+    ]
+  },
+  {
+    "id": "ROUTEROS-TRACK-PRE-7.20.5",
+    "title": "RouterOS below 7.20.5 flagged for manual security review",
+    "summary": "Operational policy entry for Hawthorn. RouterOS versions below the later 7.20.x maintenance train are flagged for manual review because MikroTik security and bug-fix disclosures are often bundled into maintenance releases. This is not a claim of a specific CVE by itself, but a practical pinboard rule.",
+    "severity": "medium",
+    "cvss_score": null,
+    "fixed_version": "7.20.5",
+    "source": "hawthorn-curated-policy",
+    "confidence": "medium",
+    "notes": [
+      "Useful as a hygiene rule for core routers and edge gear.",
+      "Replace with issue-specific entries as curated advisories are added."
+    ],
+    "references": [
+      "https://mikrotik.com/download/changelogs"
+    ],
+    "affected": [
+      {
+        "introduced": "7.0.0",
+        "fixed": "7.20.5"
+      }
+    ]
+  },
+  {
+    "id": "ROUTEROS-UPGRADE-CONTAINER-READINESS",
+    "title": "RouterOS below 7.22 lacks container-era feature baseline",
+    "summary": "Operational readiness entry tied to Hawthorn's RouterOS platform planning. Versions below 7.22 are behind the container-support baseline discussed in internal research and should be considered behind-current for feature and maintenance posture.",
+    "severity": "low",
+    "cvss_score": null,
+    "fixed_version": "7.22.0",
+    "source": "hawthorn-internal-research",
+    "confidence": "high",
+    "notes": [
+      "This is a platform posture warning, not a CVE.",
+      "Useful for dashboard visibility even when no direct exploit mapping exists."
+    ],
+    "references": [
+      "https://help.mikrotik.com/docs/",
+      "internal:projects_mikrotik-security-plugin-research"
+    ],
+    "affected": [
+      {
+        "introduced": "7.0.0",
+        "fixed": "7.22.0"
+      }
+    ]
+  }
+]

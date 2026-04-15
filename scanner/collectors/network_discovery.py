@@ -9,6 +9,7 @@ import subprocess
 import logging
 from typing import Optional
 from .ssh import ssh_exec
+from .snmp import collect_snmp_facts
 
 logger = logging.getLogger("vulnscan.collectors.network_discovery")
 
@@ -50,7 +51,7 @@ def detect_os_via_ssh(ip: str, port: int = 22, credentials: list[dict] = None) -
     """
     if not credentials:
         credentials = [
-            {'username': 'root', 'password': ''},  # Set via credential profiles
+            {'username': 'root', 'password': 'changeme'},
         ]
     
     for cred in credentials:
@@ -128,6 +129,7 @@ def detect_service(ip: str) -> dict:
     # Common ports to check
     port_map = {
         22: 'ssh',
+        161: 'snmp',
         80: 'http',
         443: 'https',
         8006: 'proxmox',
@@ -143,7 +145,8 @@ def detect_service(ip: str) -> dict:
 
 
 def scan_subnet(subnet: str, credentials: list[dict] = None, 
-                quick: bool = False) -> list[dict]:
+                quick: bool = False, snmp_community: str = None,
+                snmp_version: str = "2c", snmp_port: int = 161) -> list[dict]:
     """Scan a subnet for live hosts.
     
     Args:
@@ -212,7 +215,21 @@ def scan_subnet(subnet: str, credentials: list[dict] = None,
         if 'proxmox' in host_info['services']:
             host_info['os_name'] = 'Proxmox VE'
             host_info['os_family'] = 'linux'
-        
+
+        if 'snmp' in host_info['services'] and snmp_community:
+            snmp_host = {
+                'address': ip_str,
+                'snmp_community': snmp_community,
+                'snmp_version': snmp_version,
+                'snmp_port': snmp_port,
+            }
+            snmp_facts = collect_snmp_facts(snmp_host)
+            host_info.update(snmp_facts)
+            host_info.update(snmp_host)
+
+        host_info['address'] = ip_str
+        host_info['name'] = host_info.get('hostname') or host_info.get('snmp_sysname') or ip_str
+
         discovered.append(host_info)
     
     return discovered

@@ -1,4 +1,3 @@
-import os
 """VulnScan REST API server.
 
 Lightweight HTTP API built on Python's http.server — no external dependencies.
@@ -10,6 +9,7 @@ import json
 import logging
 import sys
 import threading
+from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
@@ -26,7 +26,31 @@ DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"
 
 # Authentication credentials
 AUTH_USERNAME = "admin"
-AUTH_PASSWORD = os.environ.get("VULNSCAN_PASSWORD", "changeme")
+AUTH_PASSWORD = "changeme"
+
+
+def _estimate_next_run(cron_expr: str) -> str | None:
+    parts = cron_expr.split()
+    if len(parts) != 5:
+        return None
+    minute, hour, dom, month, dow = parts
+    if dom != '*' or month != '*' or dow != '*':
+        return None
+    if minute.startswith('*/') and hour == '*':
+        try:
+            every = int(minute[2:])
+            now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+            next_run = now + timedelta(minutes=every - (now.minute % every or every))
+            return next_run.isoformat()
+        except Exception:
+            return None
+    if minute.isdigit() and hour.isdigit():
+        now = datetime.now(timezone.utc)
+        next_run = now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        return next_run.isoformat()
+    return None
 
 
 class VulnScanHandler(BaseHTTPRequestHandler):
@@ -137,6 +161,26 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json(host)
             else:
                 self._send_json({"error": "Host not found"}, 404)
+        elif path.startswith("/api/hosts/") and path.endswith("/details"):
+            host_id = int(path.split("/")[3])
+            host = db.get_host(host_id)
+            if not host:
+                self._send_json({"error": "Host not found"}, 404)
+                return
+
+            scans = db.list_scans(host_id=host_id, limit=10)
+            vulns = db.get_vulnerabilities(host_id=host_id, limit=100)
+            latest_scan_id = scans[0]["id"] if scans else None
+            packages = db.get_packages(host_id, latest_scan_id) if latest_scan_id else []
+            facts = db.get_device_facts(host_id, limit=100)
+
+            self._send_json({
+                "host": host,
+                "device_facts": facts,
+                "scans": scans,
+                "packages": packages,
+                "vulnerabilities": vulns,
+            })
         elif path == "/api/scans":
             host_id = params.get("host_id")
             limit = int(params.get("limit", 50))
@@ -196,6 +240,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             limit = int(params.get("limit", 100))
             history = remediation.get_remediation_history(host_id=host_id, limit=limit)
             self._send_json(history)
+        elif path == "/api/schedules":
+            self._send_json(db.list_scan_schedules())
         elif path == "/api/compliance":
             from scanner import compliance
             result = compliance.evaluate_policies()
@@ -215,9 +261,7 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"report": report})
         elif path == "/api/policies":
             from scanner import compliance
-            policies = compliance.load_policies_from_db()
-            policy_list = [{"policy_id": p.policy_id, "name": p.name, "description": p.description, "severity": p.severity} for p in policies]
-            self._send_json(policy_list)
+            self._send_json(compliance.get_policy_catalog())
         elif path.startswith("/api/vulnerabilities/") and "/fix" not in path and path.count("/") == 3:
             vuln_id = int(path.split("/")[3])
             vuln = db.get_vulnerability_with_fix(vuln_id)
@@ -260,7 +304,16 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                     ssh_password=data.get("ssh_password"),
                     ssh_key_path=data.get("ssh_key_path"),
                     ssh_port=data.get("ssh_port", 22),
-                    tags=data.get("tags", [])
+                    tags=data.get("tags", []),
+                    platform=data.get("platform", ""),
+                    vendor=data.get("vendor", ""),
+                    device_type=data.get("device_type", ""),
+                    version=data.get("version", ""),
+                    snmp_community=data.get("snmp_community"),
+                    snmp_version=data.get("snmp_version", "2c"),
+                    snmp_port=data.get("snmp_port", 161),
+                    snmp_sysdescr=data.get("snmp_sysdescr", ""),
+                    snmp_sysobjectid=data.get("snmp_sysobjectid", "")
                 )
                 self._send_json({"id": host_id, "status": "created"}, 201)
             except Exception as e:
@@ -342,6 +395,11 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             subnet = data.get("subnet")
             quick = data.get("quick", False)
             credential_profile_id = data.get("credential_profile_id")
+            snmp_community = data.get("snmp_community")
+            snmp_version = data.get("snmp_version", "2c")
+            snmp_port = data.get("snmp_port", 161)
+            auto_add = data.get("auto_add", False)
+            auto_scan = data.get("auto_scan", False)
             
             if not subnet:
                 self._send_json({"error": "subnet required"}, 400)
@@ -358,11 +416,74 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                         'key_path': profile.get('ssh_key_path')
                     }]
             
-            # Run discovery synchronously
+            # Run discovery in background
+            def _discover():
+                from scanner.collectors.network_discovery import scan_subnet
+                results = scan_subnet(
+                    subnet,
+                    credentials=credentials,
+                    quick=quick,
+                    snmp_community=snmp_community,
+                    snmp_version=snmp_version,
+                    snmp_port=snmp_port,
+                )
+                upserted = []
+                if auto_add:
+                    for host in results:
+                        host_id, status = db.upsert_discovered_host(host, credential_profile_id=credential_profile_id)
+                        upserted.append({"host_id": host_id, "status": status, "address": host["address"]})
+                    logger.info(f"Discovery auto-add completed: {len(upserted)} hosts upserted")
+                if auto_scan:
+                    host_ids = [entry["host_id"] for entry in upserted] if upserted else []
+                    if not host_ids:
+                        for host in results:
+                            existing = db.get_host_by_address(host["address"])
+                            if existing:
+                                host_ids.append(existing["id"])
+                    for host_id in sorted(set(host_ids)):
+                        try:
+                            result = scan_host(int(host_id))
+                            logger.info(f"Discovery auto-scan completed for host {host_id}: {result}")
+                        except Exception as e:
+                            logger.error(f"Discovery auto-scan failed for host {host_id}: {e}")
+                logger.info(f"Discovery completed: {len(results)} hosts found")
+            
+            t = threading.Thread(target=_discover, daemon=True)
+            t.start()
+            
+            # Also run synchronously for immediate results
             from scanner.collectors.network_discovery import scan_subnet
-            results = scan_subnet(subnet, credentials=credentials, quick=quick)
-            logger.info(f"Discovery completed: {len(results)} hosts found")
-            self._send_json({"status": "completed", "hosts": results})
+            results = scan_subnet(
+                subnet,
+                credentials=credentials,
+                quick=quick,
+                snmp_community=snmp_community,
+                snmp_version=snmp_version,
+                snmp_port=snmp_port,
+            )
+            upserted = []
+            if auto_add:
+                for host in results:
+                    host_id, status = db.upsert_discovered_host(host, credential_profile_id=credential_profile_id)
+                    upserted.append({"host_id": host_id, "status": status, "address": host["address"]})
+            scan_started = []
+            if auto_scan:
+                host_ids = [entry["host_id"] for entry in upserted] if upserted else []
+                if not host_ids:
+                    for host in results:
+                        existing = db.get_host_by_address(host["address"])
+                        if existing:
+                            host_ids.append(existing["id"])
+                for host_id in sorted(set(host_ids)):
+                    t = threading.Thread(target=scan_host, args=(int(host_id),), daemon=True)
+                    t.start()
+                    scan_started.append({"host_id": host_id, "status": "scan_started"})
+            self._send_json({
+                "status": "completed",
+                "hosts": results,
+                "upserted": upserted,
+                "scan_started": scan_started,
+            })
 
         elif path == "/api/discover/hypervisor":
             # Hypervisor discovery
@@ -386,48 +507,59 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
 
-        elif path == "/api/remediate/vuln":
-            # Remediate a single vulnerability
+        elif path == "/api/schedules":
             data = self._read_body()
-            vuln_id = data.get("vuln_id")
-            dry_run = data.get("dry_run", True)
-            if not vuln_id:
-                self._send_json({"error": "vuln_id required"}, 400)
-                return
-            from scanner import remediation
-            result = remediation.remediate_vulnerability(int(vuln_id), dry_run=dry_run)
-            self._send_json(result)
-
-        elif path == "/api/remediate/host":
-            # Remediate all vulns on a host
-            data = self._read_body()
+            name = data.get("name")
+            cron_expr = data.get("cron_expr")
             host_id = data.get("host_id")
-            dry_run = data.get("dry_run", True)
-            severity = data.get("severity")
-            if not host_id:
-                self._send_json({"error": "host_id required"}, 400)
+            enabled = data.get("enabled", True)
+            if not name or not cron_expr:
+                self._send_json({"error": "name and cron_expr required"}, 400)
                 return
-            from scanner import remediation
-            results = remediation.remediate_host(int(host_id), dry_run=dry_run, severity_filter=severity)
-            self._send_json(results)
+            next_run = _estimate_next_run(cron_expr)
+            schedule_id = db.add_scan_schedule(
+                name=name,
+                cron_expr=cron_expr,
+                host_id=int(host_id) if host_id else None,
+                enabled=enabled,
+                next_run=next_run,
+            )
+            self._send_json({"id": schedule_id, "status": "created", "next_run": next_run}, 201)
 
-        elif path == "/api/remediate/preview":
-            # Preview fix for a vulnerability (no execution)
+        elif path == "/api/schedules/run":
             data = self._read_body()
-            vuln_id = data.get("vuln_id")
-            if not vuln_id:
-                self._send_json({"error": "vuln_id required"}, 400)
+            schedule_id = data.get("schedule_id")
+            if not schedule_id:
+                self._send_json({"error": "schedule_id required"}, 400)
                 return
-            vuln = db.get_vulnerability_with_fix(int(vuln_id))
-            if vuln:
-                self._send_json(vuln)
+            schedule = db.get_scan_schedule(int(schedule_id))
+            if not schedule:
+                self._send_json({"error": "Schedule not found"}, 404)
+                return
+            if schedule.get("host_id"):
+                t = threading.Thread(target=scan_host, args=(int(schedule["host_id"]),), daemon=True)
+                t.start()
             else:
-                self._send_json({"error": "Vulnerability not found"}, 404)
+                t = threading.Thread(target=scan_all, daemon=True)
+                t.start()
+            db.update_scan_schedule(int(schedule_id), last_run=datetime.now(timezone.utc).isoformat())
+            self._send_json({"status": "started", "schedule_id": schedule_id})
 
-        elif path == "/api/compliance/summary":
-            from scanner import compliance
-            result = compliance.get_compliance_summary()
-            self._send_json(result)
+        elif path == "/api/policies/settings":
+            from scanner import database as policy_db
+            data = self._read_body()
+            policy_id = data.get("policy_id")
+            if not policy_id:
+                self._send_json({"error": "policy_id required"}, 400)
+                return
+            enabled = data.get("enabled", True)
+            threshold = data.get("threshold")
+            policy_db.upsert_policy_setting(
+                policy_id=policy_id,
+                enabled=enabled,
+                threshold=int(threshold) if threshold not in (None, "") else None,
+            )
+            self._send_json({"status": "updated", "policy_id": policy_id})
 
         else:
             self.send_error(404)
@@ -457,6 +589,15 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "updated"})
             else:
                 self._send_json({"error": "Invalid status"}, 400)
+        elif path.startswith("/api/schedules/") and path.count("/") == 3:
+            schedule_id = int(path.split("/")[3])
+            data = self._read_body()
+            if "enabled" in data:
+                data["enabled"] = 1 if data["enabled"] else 0
+            if "cron_expr" in data:
+                data["next_run"] = _estimate_next_run(data["cron_expr"])
+            db.update_scan_schedule(schedule_id, **data)
+            self._send_json({"status": "updated"})
         else:
             self.send_error(404)
 
@@ -479,6 +620,10 @@ class VulnScanHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/credentials/") and path.count("/") == 3:
             profile_id = int(path.split("/")[3])
             db.delete_credential_profile(profile_id)
+            self._send_json({"status": "deleted"})
+        elif path.startswith("/api/schedules/") and path.count("/") == 3:
+            schedule_id = int(path.split("/")[3])
+            db.delete_scan_schedule(schedule_id)
             self._send_json({"status": "deleted"})
         else:
             self.send_error(404)

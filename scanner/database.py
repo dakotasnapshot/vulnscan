@@ -19,6 +19,15 @@ CREATE TABLE IF NOT EXISTS hosts (
     ssh_port INTEGER DEFAULT 22,
     os_family TEXT DEFAULT '',
     os_name TEXT DEFAULT '',
+    platform TEXT DEFAULT '',
+    vendor TEXT DEFAULT '',
+    device_type TEXT DEFAULT '',
+    version TEXT DEFAULT '',
+    snmp_community TEXT DEFAULT '',
+    snmp_version TEXT DEFAULT '2c',
+    snmp_port INTEGER DEFAULT 161,
+    snmp_sysdescr TEXT DEFAULT '',
+    snmp_sysobjectid TEXT DEFAULT '',
     enabled INTEGER DEFAULT 1,
     last_scan TEXT,
     created_at TEXT DEFAULT (datetime('now')),
@@ -80,28 +89,46 @@ CREATE TABLE IF NOT EXISTS credential_profiles (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS remediation_log (
+CREATE TABLE IF NOT EXISTS advisory_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    host_id INTEGER,
-    vuln_id INTEGER,
-    command TEXT NOT NULL,
-    dry_run INTEGER DEFAULT 1,
-    success INTEGER DEFAULT 0,
-    output TEXT DEFAULT '',
-    error TEXT DEFAULT '',
-    timestamp TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE SET NULL
+    name TEXT NOT NULL UNIQUE,
+    vendor TEXT DEFAULT '',
+    source_type TEXT DEFAULT 'local_json',
+    path TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS discovery_results (
+CREATE TABLE IF NOT EXISTS device_facts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    address TEXT NOT NULL,
-    hostname TEXT DEFAULT '',
-    os_guess TEXT DEFAULT '',
-    open_ports TEXT DEFAULT '',
-    ssh_accessible INTEGER DEFAULT 0,
-    discovered_at TEXT DEFAULT (datetime('now')),
-    added_as_host INTEGER DEFAULT 0
+    host_id INTEGER NOT NULL,
+    scan_id INTEGER,
+    fact_key TEXT NOT NULL,
+    fact_value TEXT DEFAULT '',
+    source TEXT DEFAULT '',
+    collected_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE,
+    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS scan_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    host_id INTEGER,
+    cron_expr TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    last_run TEXT,
+    next_run TEXT,
+    FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS compliance_policy_settings (
+    policy_id TEXT PRIMARY KEY,
+    enabled INTEGER DEFAULT 1,
+    threshold INTEGER,
+    updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_vulns_host ON vulnerabilities(host_id);
@@ -110,6 +137,8 @@ CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vulnerabilities(severity);
 CREATE INDEX IF NOT EXISTS idx_vulns_status ON vulnerabilities(status);
 CREATE INDEX IF NOT EXISTS idx_pkgs_host ON packages(host_id);
 CREATE INDEX IF NOT EXISTS idx_scans_host ON scans(host_id);
+CREATE INDEX IF NOT EXISTS idx_device_facts_host ON device_facts(host_id);
+CREATE INDEX IF NOT EXISTS idx_scan_schedules_enabled ON scan_schedules(enabled);
 """
 
 
@@ -127,6 +156,24 @@ def init_db():
     """Initialize the database schema."""
     conn = get_db()
     conn.executescript(SCHEMA)
+    migrations = [
+        "ALTER TABLE hosts ADD COLUMN platform TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN vendor TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN device_type TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN version TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN snmp_community TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN snmp_version TEXT DEFAULT '2c'",
+        "ALTER TABLE hosts ADD COLUMN snmp_port INTEGER DEFAULT 161",
+        "ALTER TABLE hosts ADD COLUMN snmp_sysdescr TEXT DEFAULT ''",
+        "ALTER TABLE hosts ADD COLUMN snmp_sysobjectid TEXT DEFAULT ''",
+        "ALTER TABLE scan_schedules ADD COLUMN last_run TEXT",
+        "ALTER TABLE scan_schedules ADD COLUMN next_run TEXT",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
@@ -135,13 +182,20 @@ def init_db():
 
 def add_host(name: str, address: str, ssh_user: str = "root",
              ssh_password: str = None, ssh_key_path: str = None,
-             ssh_port: int = 22, tags: list[str] = None) -> int:
+             ssh_port: int = 22, tags: list[str] = None,
+             platform: str = "", vendor: str = "", device_type: str = "",
+             version: str = "", snmp_community: str = None,
+             snmp_version: str = "2c", snmp_port: int = 161,
+             snmp_sysdescr: str = "", snmp_sysobjectid: str = "") -> int:
     conn = get_db()
     cur = conn.execute(
-        """INSERT INTO hosts (name, address, ssh_user, ssh_password, ssh_key_path, ssh_port, tags)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO hosts (name, address, ssh_user, ssh_password, ssh_key_path, ssh_port,
+           os_family, os_name, platform, vendor, device_type, version,
+           snmp_community, snmp_version, snmp_port, snmp_sysdescr, snmp_sysobjectid, tags)
+           VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, address, ssh_user, ssh_password, ssh_key_path, ssh_port,
-         ",".join(tags) if tags else "")
+         platform, vendor, device_type, version, snmp_community, snmp_version,
+         snmp_port, snmp_sysdescr, snmp_sysobjectid, ",".join(tags) if tags else "")
     )
     conn.commit()
     host_id = cur.lastrowid
@@ -163,6 +217,20 @@ def get_host_by_address(address: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def get_device_facts(host_id: int, limit: int = 100) -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT fact_key, fact_value, source, collected_at, scan_id
+           FROM device_facts
+           WHERE host_id = ?
+           ORDER BY collected_at DESC, id DESC
+           LIMIT ?""",
+        (host_id, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def list_hosts(enabled_only: bool = False) -> list[dict]:
     conn = get_db()
     q = "SELECT * FROM hosts"
@@ -175,10 +243,102 @@ def list_hosts(enabled_only: bool = False) -> list[dict]:
 
 
 def update_host(host_id: int, **kwargs):
+    if not kwargs:
+        return
     conn = get_db()
     sets = ", ".join(f"{k} = ?" for k in kwargs)
     vals = list(kwargs.values()) + [host_id]
     conn.execute(f"UPDATE hosts SET {sets} WHERE id = ?", vals)
+    conn.commit()
+    conn.close()
+
+
+def upsert_discovered_host(host: dict, credential_profile_id: int = None) -> tuple[int, str]:
+    """Create or update a discovered host, preserving existing credentials when possible."""
+    existing = get_host_by_address(host["address"])
+
+    creds = {}
+    if credential_profile_id:
+        profile = get_credential_profile(credential_profile_id)
+        if profile:
+            creds = {
+                "ssh_user": profile["ssh_user"],
+                "ssh_password": profile.get("ssh_password"),
+                "ssh_key_path": profile.get("ssh_key_path"),
+            }
+
+    name = host.get("name") or host.get("hostname") or host.get("snmp_sysname") or host["address"]
+    payload = {
+        "name": name,
+        "address": host["address"],
+        "ssh_user": host.get("ssh_user") or creds.get("ssh_user", "root"),
+        "ssh_password": host.get("ssh_password") if host.get("ssh_accessible") else creds.get("ssh_password"),
+        "ssh_key_path": host.get("ssh_key_path") if host.get("ssh_accessible") else creds.get("ssh_key_path"),
+        "ssh_port": host.get("ssh_port", 22),
+        "platform": host.get("platform", ""),
+        "vendor": host.get("vendor", ""),
+        "device_type": host.get("device_type", ""),
+        "version": host.get("version", ""),
+        "snmp_community": host.get("snmp_community") or "",
+        "snmp_version": host.get("snmp_version", "2c"),
+        "snmp_port": host.get("snmp_port", 161),
+        "snmp_sysdescr": host.get("snmp_sysdescr", ""),
+        "snmp_sysobjectid": host.get("snmp_sysobjectid", ""),
+    }
+
+    optional_updates = {
+        "os_family": host.get("os_family", ""),
+        "os_name": host.get("os_name", ""),
+    }
+
+    if existing:
+        updates = {}
+        for key, value in payload.items():
+            if key == "address":
+                continue
+            if value not in (None, ""):
+                updates[key] = value
+        for key, value in optional_updates.items():
+            if value and value != "unknown":
+                updates[key] = value
+        update_host(existing["id"], **updates)
+        return existing["id"], "updated"
+
+    host_id = add_host(
+        name=payload["name"],
+        address=payload["address"],
+        ssh_user=payload["ssh_user"],
+        ssh_password=payload["ssh_password"],
+        ssh_key_path=payload["ssh_key_path"],
+        ssh_port=payload["ssh_port"],
+        tags=host.get("tags", []),
+        platform=payload["platform"],
+        vendor=payload["vendor"],
+        device_type=payload["device_type"],
+        version=payload["version"],
+        snmp_community=payload["snmp_community"],
+        snmp_version=payload["snmp_version"],
+        snmp_port=payload["snmp_port"],
+        snmp_sysdescr=payload["snmp_sysdescr"],
+        snmp_sysobjectid=payload["snmp_sysobjectid"],
+    )
+    update_host(host_id, **{k: v for k, v in optional_updates.items() if v and v != "unknown"})
+    return host_id, "created"
+
+
+def insert_device_facts(host_id: int, scan_id: int = None, facts: dict = None, source: str = ""):
+    if not facts:
+        return
+    conn = get_db()
+    rows = [
+        (host_id, scan_id, str(k), "" if v is None else str(v), source)
+        for k, v in facts.items()
+    ]
+    conn.executemany(
+        """INSERT INTO device_facts (host_id, scan_id, fact_key, fact_value, source)
+           VALUES (?, ?, ?, ?, ?)""",
+        rows,
+    )
     conn.commit()
     conn.close()
 
@@ -222,9 +382,10 @@ def bulk_add_hosts(hosts: list[dict], credential_profile_id: int = None) -> list
         
         try:
             cur = conn.execute(
-                """INSERT INTO hosts (name, address, ssh_user, ssh_password, ssh_key_path, 
-                   ssh_port, os_family, os_name, tags)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO hosts (name, address, ssh_user, ssh_password, ssh_key_path,
+                   ssh_port, os_family, os_name, platform, vendor, device_type, version,
+                   snmp_community, snmp_version, snmp_port, snmp_sysdescr, snmp_sysobjectid, tags)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     host.get('name', host['address']),
                     host['address'],
@@ -234,6 +395,15 @@ def bulk_add_hosts(hosts: list[dict], credential_profile_id: int = None) -> list
                     host.get('ssh_port', 22),
                     host.get('os_family', ''),
                     host.get('os_name', ''),
+                    host.get('platform', ''),
+                    host.get('vendor', ''),
+                    host.get('device_type', ''),
+                    host.get('version', ''),
+                    host.get('snmp_community', ''),
+                    host.get('snmp_version', '2c'),
+                    host.get('snmp_port', 161),
+                    host.get('snmp_sysdescr', ''),
+                    host.get('snmp_sysobjectid', ''),
                     ",".join(host.get('tags', []))
                 )
             )
@@ -301,6 +471,101 @@ def list_scans(host_id: int = None, limit: int = 50) -> list[dict]:
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# --- Scheduler CRUD ---
+
+def add_scan_schedule(name: str, cron_expr: str, host_id: int = None, enabled: bool = True,
+                      next_run: str = None) -> int:
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO scan_schedules (name, host_id, cron_expr, enabled, next_run)
+           VALUES (?, ?, ?, ?, ?)""",
+        (name, host_id, cron_expr, 1 if enabled else 0, next_run)
+    )
+    conn.commit()
+    schedule_id = cur.lastrowid
+    conn.close()
+    return schedule_id
+
+
+def list_scan_schedules() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT s.*, h.name as host_name
+           FROM scan_schedules s
+           LEFT JOIN hosts h ON s.host_id = h.id
+           ORDER BY s.enabled DESC, s.name ASC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_scan_schedule(schedule_id: int) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute(
+        """SELECT s.*, h.name as host_name
+           FROM scan_schedules s
+           LEFT JOIN hosts h ON s.host_id = h.id
+           WHERE s.id = ?""",
+        (schedule_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_scan_schedule(schedule_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    sets = ", ".join(f"{k} = ?" for k in kwargs)
+    vals = list(kwargs.values()) + [schedule_id]
+    conn.execute(f"UPDATE scan_schedules SET {sets} WHERE id = ?", vals)
+    conn.commit()
+    conn.close()
+
+
+def delete_scan_schedule(schedule_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM scan_schedules WHERE id = ?", (schedule_id,))
+    conn.commit()
+    conn.close()
+
+
+# --- Compliance Policy Settings ---
+
+def list_policy_settings() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT policy_id, enabled, threshold, updated_at FROM compliance_policy_settings ORDER BY policy_id"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_policy_setting(policy_id: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT policy_id, enabled, threshold, updated_at FROM compliance_policy_settings WHERE policy_id = ?",
+        (policy_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_policy_setting(policy_id: str, enabled: bool = True, threshold: int = None):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO compliance_policy_settings (policy_id, enabled, threshold, updated_at)
+           VALUES (?, ?, ?, datetime('now'))
+           ON CONFLICT(policy_id) DO UPDATE SET
+             enabled = excluded.enabled,
+             threshold = excluded.threshold,
+             updated_at = datetime('now')""",
+        (policy_id, 1 if enabled else 0, threshold),
+    )
+    conn.commit()
+    conn.close()
 
 
 # --- Package CRUD ---

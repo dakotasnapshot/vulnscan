@@ -180,12 +180,61 @@ DEFAULT_POLICIES = [
     MaxVulnerabilityCountPolicy(max_count=100),
 ]
 
+POLICY_DEFAULTS = {
+    'no-critical-vulns': {'threshold': 7, 'severity': 'critical', 'kind': 'max_age_days'},
+    'no-high-vulns': {'threshold': 14, 'severity': 'high', 'kind': 'max_age_days'},
+    'recent-scans': {'threshold': 7, 'severity': 'medium', 'kind': 'max_age_days'},
+    'max-vuln-count': {'threshold': 100, 'severity': 'medium', 'kind': 'max_count'},
+}
+
+
+def _policy_from_setting(policy_id: str, threshold: int):
+    if policy_id == 'no-critical-vulns':
+        return NoCriticalVulnsPolicy(max_age_days=threshold)
+    if policy_id == 'no-high-vulns':
+        return NoHighVulnsPolicy(max_age_days=threshold)
+    if policy_id == 'recent-scans':
+        return RecentScansPolicy(max_age_days=threshold)
+    if policy_id == 'max-vuln-count':
+        return MaxVulnerabilityCountPolicy(max_count=threshold)
+    return None
+
 
 def load_policies_from_db() -> list[Policy]:
     """Load custom policies from database."""
-    # For now, return defaults
-    # TODO: Store custom policies in DB
-    return DEFAULT_POLICIES
+    configured = {row['policy_id']: row for row in db.list_policy_settings()}
+    policies = []
+
+    for policy_id, default in POLICY_DEFAULTS.items():
+        setting = configured.get(policy_id)
+        enabled = True if setting is None else bool(setting.get('enabled', 1))
+        threshold = default['threshold'] if setting is None or setting.get('threshold') is None else int(setting['threshold'])
+        if not enabled:
+            continue
+        policy = _policy_from_setting(policy_id, threshold)
+        if policy:
+            policies.append(policy)
+
+    return policies
+
+
+def get_policy_catalog() -> list[dict]:
+    configured = {row['policy_id']: row for row in db.list_policy_settings()}
+    catalog = []
+    for policy_id, default in POLICY_DEFAULTS.items():
+        setting = configured.get(policy_id, {})
+        threshold = default['threshold'] if setting.get('threshold') is None else int(setting['threshold'])
+        policy = _policy_from_setting(policy_id, threshold)
+        catalog.append({
+            'policy_id': policy_id,
+            'name': policy.name if policy else policy_id,
+            'description': policy.description if policy else '',
+            'severity': default['severity'],
+            'enabled': True if not setting else bool(setting.get('enabled', 1)),
+            'threshold': threshold,
+            'threshold_kind': default['kind'],
+        })
+    return catalog
 
 
 def evaluate_policies(policies: list[Policy] = None) -> dict:
