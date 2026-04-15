@@ -359,6 +359,7 @@
                 <a onclick="showPage('scans')" id="nav-scans">🔍 Scan History</a>
                 <a onclick="showPage('schedules')" id="nav-schedules">⏱ Schedules</a>
                 <a onclick="showPage('logs')" id="nav-logs">📜 Logs</a>
+                <a onclick="showPage('settings')" id="nav-settings">⚙️ Settings</a>
             </nav>
         </aside>
 
@@ -486,6 +487,7 @@
 
     // State
     let currentPage = 'dashboard';
+    let currentUser = null;
     let dashboardData = null;
 
     // --- API Helpers ---
@@ -512,6 +514,7 @@
         document.getElementById('nav-' + page)?.classList.add('active');
 
         const el = document.getElementById('content');
+        if (!currentUser) { try { currentUser = (await api('GET', '/api/auth/me')).user; } catch (e) {} }
         switch (page) {
             case 'dashboard': el.innerHTML = await renderDashboard(); break;
             case 'hosts': el.innerHTML = await renderHosts(); break;
@@ -521,6 +524,7 @@
             case 'scans': el.innerHTML = await renderScans(); break;
             case 'schedules': el.innerHTML = await renderSchedules(); break;
             case 'logs': el.innerHTML = await renderLogs(); break;
+            case 'settings': el.innerHTML = await renderSettings(); break;
         }
     }
 
@@ -1294,6 +1298,52 @@ let credentialProfiles = [];
         `;
     }
 
+    async function renderSettings() {
+        const me = (await api('GET', '/api/auth/me')).user;
+        currentUser = me;
+        const users = me && me.role === 'admin' ? await api('GET', '/api/users') : [];
+        const userRows = (users || []).map(u => `
+            <tr>
+                <td><strong>${esc(u.username)}</strong></td>
+                <td><span class="badge ${u.role === 'admin' ? 'critical' : u.role === 'operator' ? 'running' : 'success'}">${esc(u.role)}</span></td>
+                <td>${u.enabled ? 'enabled' : 'disabled'}</td>
+                <td>${esc(u.created_at || '—')}</td>
+                <td>${me.role === 'admin' ? `<button class="btn sm" onclick="toggleUserEnabled(${u.id}, ${u.enabled ? 'false' : 'true'})">${u.enabled ? 'Disable' : 'Enable'}</button>` : '—'}</td>
+            </tr>
+        `).join('');
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h2>Settings & Access</h2>
+                <div class="inline-row"><span class="badge running">${esc(me?.role || 'unknown')}</span><span class="muted">Signed in as ${esc(me?.username || 'unknown')}</span></div>
+            </div>
+            <div class="log-grid">
+                <div class="panel">
+                    <div class="panel-header"><h2>Account</h2></div>
+                    <div style="padding:16px 20px" class="stack">
+                        <div class="muted">Change your password without touching the server shell like an animal.</div>
+                        <input type="password" id="new-password" placeholder="New password">
+                        <button class="btn primary" onclick="changeMyPassword()">Change Password</button>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header"><h2>Access Model</h2></div>
+                    <div style="padding:16px 20px" class="muted">
+                        Roles now exist: <strong>admin</strong>, <strong>operator</strong>, <strong>viewer</strong>. Admins manage users, schedules, credentials, and policy settings. Operators can scan and manage hosts. Viewers can inspect results.
+                    </div>
+                </div>
+            </div>
+            ${me && me.role === 'admin' ? `
+            <div class="panel">
+                <div class="panel-header"><h2>Users</h2><button class="btn primary sm" onclick="createUserPrompt()">+ Add User</button></div>
+                <table>
+                    <tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+                    ${userRows || '<tr><td colspan="5" class="empty">No users found</td></tr>'}
+                </table>
+            </div>
+            ` : ''}
+        `;
+    }
+
     async function renderCompliance() {
         const [compliance, policies] = await Promise.all([
             api('GET', '/api/compliance'),
@@ -1500,6 +1550,31 @@ let credentialProfiles = [];
         await api('DELETE', `/api/schedules/${id}`);
         toast('Schedule deleted');
         showPage('schedules');
+    }
+
+    async function changeMyPassword() {
+        const newPassword = document.getElementById('new-password').value;
+        if (!newPassword) { toast('New password required'); return; }
+        await api('POST', '/api/auth/change-password', { new_password: newPassword });
+        toast('Password updated');
+        document.getElementById('new-password').value = '';
+    }
+
+    async function createUserPrompt() {
+        const username = prompt('Username:');
+        if (!username || !username.trim()) return;
+        const password = prompt('Initial password:');
+        if (!password) return;
+        const role = prompt('Role (admin/operator/viewer):', 'viewer') || 'viewer';
+        await api('POST', '/api/users', { username, password, role, enabled: true });
+        toast('User created');
+        showPage('settings');
+    }
+
+    async function toggleUserEnabled(id, enabled) {
+        await api('PUT', `/api/users/${id}`, { enabled: enabled === 'true' ? 1 : 0 });
+        toast(`User ${enabled === 'true' ? 'enabled' : 'disabled'}`);
+        showPage('settings');
     }
 
     async function savePolicySetting(policyId) {

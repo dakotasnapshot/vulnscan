@@ -24,11 +24,6 @@ logger = logging.getLogger("vulnscan.api")
 
 DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"
 
-# Authentication credentials
-AUTH_USERNAME = "admin"
-AUTH_PASSWORD = "changeme"
-
-
 def _estimate_next_run(cron_expr: str) -> str | None:
     parts = cron_expr.split()
     if len(parts) != 5:
@@ -70,9 +65,18 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             # Decode base64 credentials
             credentials = base64.b64decode(auth_header[6:]).decode("utf-8")
             username, password = credentials.split(":", 1)
-            return username == AUTH_USERNAME and password == AUTH_PASSWORD
+            user = db.authenticate_user(username, password)
+            self.current_user = user
+            return user is not None
         except Exception:
             return False
+
+    def _require_role(self, *roles):
+        user = getattr(self, 'current_user', None)
+        if not user or user.get('role') not in roles:
+            self._send_json({"error": "Forbidden"}, 403)
+            return False
+        return True
 
     def _require_auth(self):
         """Send 401 Unauthorized response with WWW-Authenticate header."""
@@ -220,6 +224,10 @@ class VulnScanHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/credentials":
             self._send_json(db.list_credential_profiles())
+        elif path == "/api/users":
+            if not self._require_role('admin'):
+                return
+            self._send_json(db.list_users())
         elif path.startswith("/api/credentials/") and path.count("/") == 3:
             profile_id = int(path.split("/")[3])
             profile = db.get_credential_profile(profile_id)
@@ -242,6 +250,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             self._send_json(history)
         elif path == "/api/schedules":
             self._send_json(db.list_scan_schedules())
+        elif path == "/api/auth/me":
+            self._send_json({"user": getattr(self, 'current_user', None)})
         elif path == "/api/compliance":
             from scanner import compliance
             result = compliance.evaluate_policies()
@@ -291,6 +301,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/hosts":
+            if not self._require_role('admin', 'operator'):
+                return
             data = self._read_body()
             required = ["name", "address"]
             if not all(k in data for k in required):
@@ -320,6 +332,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 400)
 
         elif path == "/api/scan":
+            if not self._require_role('admin', 'operator'):
+                return
             data = self._read_body()
             host_id = data.get("host_id")
             if host_id:
@@ -340,6 +354,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "scan_all_started"})
 
         elif path == "/api/scan/sync":
+            if not self._require_role('admin', 'operator'):
+                return
             # Synchronous scan (for API/automation use)
             data = self._read_body()
             host_id = data.get("host_id")
@@ -351,6 +367,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json(results)
 
         elif path == "/api/hosts/bulk":
+            if not self._require_role('admin', 'operator'):
+                return
             # Bulk add hosts
             data = self._read_body()
             hosts = data.get("hosts", [])
@@ -371,6 +389,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 400)
 
         elif path == "/api/credentials":
+            if not self._require_role('admin'):
+                return
             # Create credential profile
             data = self._read_body()
             required = ["name", "ssh_user"]
@@ -390,6 +410,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 400)
 
         elif path == "/api/discover/subnet":
+            if not self._require_role('admin', 'operator'):
+                return
             # Subnet discovery
             data = self._read_body()
             subnet = data.get("subnet")
@@ -486,6 +508,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             })
 
         elif path == "/api/discover/hypervisor":
+            if not self._require_role('admin', 'operator'):
+                return
             # Hypervisor discovery
             data = self._read_body()
             host_id = data.get("host_id")
@@ -508,6 +532,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 500)
 
         elif path == "/api/schedules":
+            if not self._require_role('admin'):
+                return
             data = self._read_body()
             name = data.get("name")
             cron_expr = data.get("cron_expr")
@@ -527,6 +553,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             self._send_json({"id": schedule_id, "status": "created", "next_run": next_run}, 201)
 
         elif path == "/api/schedules/run":
+            if not self._require_role('admin', 'operator'):
+                return
             data = self._read_body()
             schedule_id = data.get("schedule_id")
             if not schedule_id:
@@ -546,6 +574,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "started", "schedule_id": schedule_id})
 
         elif path == "/api/policies/settings":
+            if not self._require_role('admin'):
+                return
             from scanner import database as policy_db
             data = self._read_body()
             policy_id = data.get("policy_id")
@@ -561,6 +591,33 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             )
             self._send_json({"status": "updated", "policy_id": policy_id})
 
+        elif path == "/api/users":
+            if not self._require_role('admin'):
+                return
+            data = self._read_body()
+            username = data.get('username')
+            password = data.get('password')
+            role = data.get('role', 'viewer')
+            enabled = data.get('enabled', True)
+            if not username or not password:
+                self._send_json({"error": "username and password required"}, 400)
+                return
+            user_id = db.create_user(username=username, password=password, role=role, enabled=enabled)
+            self._send_json({"id": user_id, "status": "created"}, 201)
+
+        elif path == "/api/auth/change-password":
+            data = self._read_body()
+            user = getattr(self, 'current_user', None)
+            if not user:
+                self._send_json({"error": "Authentication required"}, 401)
+                return
+            new_password = data.get('new_password')
+            if not new_password:
+                self._send_json({"error": "new_password required"}, 400)
+                return
+            db.update_user(user['id'], password=new_password)
+            self._send_json({"status": "updated"})
+
         else:
             self.send_error(404)
 
@@ -573,6 +630,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/hosts/") and path.count("/") == 3:
+            if not self._require_role('admin', 'operator'):
+                return
             host_id = int(path.split("/")[3])
             data = self._read_body()
             if "tags" in data and isinstance(data["tags"], list):
@@ -580,6 +639,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             db.update_host(host_id, **data)
             self._send_json({"status": "updated"})
         elif path.startswith("/api/vulnerabilities/") and "/status" in path:
+            if not self._require_role('admin', 'operator'):
+                return
             # PATCH /api/vulnerabilities/{id}/status
             vuln_id = int(path.split("/")[3])
             data = self._read_body()
@@ -590,6 +651,8 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"error": "Invalid status"}, 400)
         elif path.startswith("/api/schedules/") and path.count("/") == 3:
+            if not self._require_role('admin'):
+                return
             schedule_id = int(path.split("/")[3])
             data = self._read_body()
             if "enabled" in data:
@@ -597,6 +660,13 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             if "cron_expr" in data:
                 data["next_run"] = _estimate_next_run(data["cron_expr"])
             db.update_scan_schedule(schedule_id, **data)
+            self._send_json({"status": "updated"})
+        elif path.startswith("/api/users/") and path.count("/") == 3:
+            if not self._require_role('admin'):
+                return
+            user_id = int(path.split("/")[3])
+            data = self._read_body()
+            db.update_user(user_id, **data)
             self._send_json({"status": "updated"})
         else:
             self.send_error(404)
@@ -614,14 +684,20 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/hosts/") and path.count("/") == 3:
+            if not self._require_role('admin'):
+                return
             host_id = int(path.split("/")[3])
             db.delete_host(host_id)
             self._send_json({"status": "deleted"})
         elif path.startswith("/api/credentials/") and path.count("/") == 3:
+            if not self._require_role('admin'):
+                return
             profile_id = int(path.split("/")[3])
             db.delete_credential_profile(profile_id)
             self._send_json({"status": "deleted"})
         elif path.startswith("/api/schedules/") and path.count("/") == 3:
+            if not self._require_role('admin'):
+                return
             schedule_id = int(path.split("/")[3])
             db.delete_scan_schedule(schedule_id)
             self._send_json({"status": "deleted"})

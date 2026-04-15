@@ -2,6 +2,9 @@
 
 import sqlite3
 import json
+import os
+import hashlib
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -131,6 +134,16 @@ CREATE TABLE IF NOT EXISTS compliance_policy_settings (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_vulns_host ON vulnerabilities(host_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_cve ON vulnerabilities(cve_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vulnerabilities(severity);
@@ -139,6 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_pkgs_host ON packages(host_id);
 CREATE INDEX IF NOT EXISTS idx_scans_host ON scans(host_id);
 CREATE INDEX IF NOT EXISTS idx_device_facts_host ON device_facts(host_id);
 CREATE INDEX IF NOT EXISTS idx_scan_schedules_enabled ON scan_schedules(enabled);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 """
 
 
@@ -175,7 +189,40 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     conn.commit()
+    ensure_default_admin(conn)
     conn.close()
+
+
+def _hash_password(password: str, salt: str = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 200_000).hex()
+    return f"pbkdf2_sha256${salt}${digest}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        scheme, salt, digest = password_hash.split('$', 2)
+        if scheme != 'pbkdf2_sha256':
+            return False
+        candidate = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 200_000).hex()
+        return secrets.compare_digest(candidate, digest)
+    except Exception:
+        return False
+
+
+def ensure_default_admin(conn=None):
+    owns_conn = conn is None
+    conn = conn or get_db()
+    row = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+    if not row:
+        default_password = os.environ.get('VULNSCAN_PASSWORD', 'changeme')
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, enabled) VALUES (?, ?, 'admin', 1)",
+            ('admin', _hash_password(default_password)),
+        )
+        conn.commit()
+    if owns_conn:
+        conn.close()
 
 
 # --- Host CRUD ---
@@ -566,6 +613,65 @@ def upsert_policy_setting(policy_id: str, enabled: bool = True, threshold: int =
     )
     conn.commit()
     conn.close()
+
+
+# --- Users / Auth ---
+
+def list_users() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, username, role, enabled, created_at, updated_at FROM users ORDER BY username"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_user_by_username(username: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_user(username: str, password: str, role: str = 'viewer', enabled: bool = True) -> int:
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO users (username, password_hash, role, enabled) VALUES (?, ?, ?, ?)",
+        (username, _hash_password(password), role, 1 if enabled else 0),
+    )
+    conn.commit()
+    user_id = cur.lastrowid
+    conn.close()
+    return user_id
+
+
+def update_user(user_id: int, **kwargs):
+    if not kwargs:
+        return
+    updates = dict(kwargs)
+    if 'password' in updates:
+        updates['password_hash'] = _hash_password(updates.pop('password'))
+    updates['updated_at'] = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    sets = ", ".join(f"{k} = ?" for k in updates)
+    vals = list(updates.values()) + [user_id]
+    conn.execute(f"UPDATE users SET {sets} WHERE id = ?", vals)
+    conn.commit()
+    conn.close()
+
+
+def authenticate_user(username: str, password: str) -> Optional[dict]:
+    user = get_user_by_username(username)
+    if not user or not user.get('enabled'):
+        return None
+    if not verify_password(password, user['password_hash']):
+        return None
+    return {
+        'id': user['id'],
+        'username': user['username'],
+        'role': user['role'],
+        'enabled': user['enabled'],
+    }
 
 
 # --- Package CRUD ---
