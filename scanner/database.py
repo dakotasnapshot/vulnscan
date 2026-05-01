@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path("/opt/vulnscan/db/vulnscan.db")
+DB_PATH = Path(os.environ.get("VULNSCAN_DB_PATH", "/opt/vulnscan/db/vulnscan.db"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS hosts (

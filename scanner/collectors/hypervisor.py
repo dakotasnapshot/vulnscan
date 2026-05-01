@@ -49,7 +49,7 @@ def discover_proxmox_guests(host: dict) -> list[dict]:
                 # Try to get IP address
                 ip = None
                 if status.lower() == 'running':
-                    rc_ip, ip_out, _ = ssh_exec(host, f"pct exec {vmid} -- hostname -I 2>/dev/null | awk '{{print \}}'")
+                    rc_ip, ip_out, _ = ssh_exec(host, f"pct exec {vmid} -- hostname -I 2>/dev/null | awk '{{print $1}}'")
                     if rc_ip == 0 and ip_out.strip():
                         ip = ip_out.strip()
                 

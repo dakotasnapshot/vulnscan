@@ -133,11 +133,12 @@ curl -u admin:changeme http://localhost:8080/api/vulnerabilities
 ## Configuration
 
 ### Database Location
-Default: `/opt/vulnscan/db/vulnscan.db`  
-Change in `scanner/database.py`:
+Default: `/opt/vulnscan/db/vulnscan.db`
 
-```python
-DB_PATH = Path("/your/custom/path/vulnscan.db")
+Override at runtime if needed:
+
+```bash
+export VULNSCAN_DB_PATH=/your/custom/path/vulnscan.db
 ```
 
 ### Authentication
