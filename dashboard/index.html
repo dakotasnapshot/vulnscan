@@ -494,8 +494,28 @@
     async function api(method, path, body = null) {
         const opts = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) opts.body = JSON.stringify(body);
-        const res = await fetch(API + path, opts);
-        return res.json();
+        let res;
+        try {
+            res = await fetch(API + path, opts);
+        } catch (e) {
+            toast('Network error: ' + e.message);
+            throw e;
+        }
+        if (res.status === 401) {
+            // Basic-auth credentials missing/expired. Reload so the browser
+            // re-prompts for the same-origin login.
+            toast('Authentication required — reloading…');
+            setTimeout(() => location.reload(), 800);
+            throw new Error('unauthorized');
+        }
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = null; }
+        if (!res.ok) {
+            const msg = (data && data.error) ? data.error : ('Request failed (' + res.status + ')');
+            toast(msg);
+            throw new Error(msg);
+        }
+        return data;
     }
 
     function toast(msg) {
@@ -1769,8 +1789,18 @@ let credentialProfiles = [];
 
     function timeAgo(iso) {
         if (!iso) return '—';
-        const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+        // The API emits ISO-8601 timestamps. Some carry a UTC offset
+        // (...+00:00), some a 'Z', and legacy SQLite rows are space-separated
+        // with no zone ('2026-06-11 14:27:29'). Normalize the space to 'T', and
+        // only append 'Z' when there's no timezone at all — appending it to an
+        // offset string ('...+00:00Z') produces an Invalid Date (this was
+        // rendering every timestamp as "NaNd ago").
+        let str = iso.replace(' ', 'T');
+        const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(str);
+        const d = new Date(hasTz ? str : str + 'Z');
+        if (isNaN(d)) return '—';
         const s = Math.floor((Date.now() - d) / 1000);
+        if (s < 0) return 'just now';
         if (s < 60) return 'just now';
         if (s < 3600) return Math.floor(s/60) + 'm ago';
         if (s < 86400) return Math.floor(s/3600) + 'h ago';

@@ -237,24 +237,42 @@ def query_batch(packages: list[dict], batch_size: int = 1000) -> dict:
 
         payload = json.dumps({"queries": queries}).encode()
 
-        try:
-            req = urllib.request.Request(
-                OSV_BATCH_URL,
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                logger.warning("OSV rate limited, waiting 30s...")
-                sleep(30)
+        # Retry transient failures instead of silently dropping the whole batch
+        # of packages (which left large swaths of hosts looking vuln-free).
+        data = None
+        for attempt in range(4):
+            try:
+                req = urllib.request.Request(
+                    OSV_BATCH_URL,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    data = json.loads(resp.read())
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    wait = 30 * (attempt + 1)
+                    logger.warning(f"OSV rate limited, waiting {wait}s (attempt {attempt + 1}/4)...")
+                    sleep(wait)
+                    continue
+                if 500 <= e.code < 600:
+                    logger.warning(f"OSV server error {e.code}, retrying (attempt {attempt + 1}/4)...")
+                    sleep(5 * (attempt + 1))
+                    continue
+                logger.error(f"OSV API error: {e.code} {e.reason}")
+                break
+            except Exception as e:
+                logger.warning(f"OSV API request failed: {e}, retrying (attempt {attempt + 1}/4)...")
+                sleep(5 * (attempt + 1))
                 continue
-            logger.error(f"OSV API error: {e.code} {e.reason}")
-            continue
-        except Exception as e:
-            logger.error(f"OSV API request failed: {e}")
+
+        if data is None:
+            logger.error(
+                f"OSV batch {i}-{i + len(chunk)} failed after retries; "
+                f"{len(queries)} packages not checked this run"
+            )
             continue
 
         batch_results = data.get("results", [])

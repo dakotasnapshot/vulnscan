@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path("/opt/vulnscan/db/vulnscan.db")
+DB_PATH = Path(os.environ.get("VULNSCAN_DB", "/opt/vulnscan/db/vulnscan.db"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS hosts (
@@ -159,10 +159,13 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 def get_db() -> sqlite3.Connection:
     """Get a database connection with row factory."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # The API now runs threaded (HTTP workers + scheduler + background scans),
+    # so a writer may briefly hold the lock. Wait rather than fail instantly.
+    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 

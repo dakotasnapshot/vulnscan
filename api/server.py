@@ -10,7 +10,7 @@ import logging
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
@@ -19,33 +19,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scanner import database as db
 from scanner.engine import scan_host, scan_all
+from scanner.scheduler import SchedulerThread, compute_next_run
 
 logger = logging.getLogger("vulnscan.api")
 
 DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"
 
+
 def _estimate_next_run(cron_expr: str) -> str | None:
-    parts = cron_expr.split()
-    if len(parts) != 5:
-        return None
-    minute, hour, dom, month, dow = parts
-    if dom != '*' or month != '*' or dow != '*':
-        return None
-    if minute.startswith('*/') and hour == '*':
-        try:
-            every = int(minute[2:])
-            now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-            next_run = now + timedelta(minutes=every - (now.minute % every or every))
-            return next_run.isoformat()
-        except Exception:
-            return None
-    if minute.isdigit() and hour.isdigit():
-        now = datetime.now(timezone.utc)
-        next_run = now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
-        if next_run <= now:
-            next_run += timedelta(days=1)
-        return next_run.isoformat()
-    return None
+    """Compute the next fire time for a cron expression (full 5-field support)."""
+    return compute_next_run(cron_expr)
 
 
 class VulnScanHandler(BaseHTTPRequestHandler):
@@ -238,10 +221,10 @@ class VulnScanHandler(BaseHTTPRequestHandler):
         elif path == "/api/discover":
             self._send_json({"error": "Use POST to trigger discovery"}, 405)
         elif path == "/api/discover/results":
-            conn = db.get_db()
-            rows = conn.execute("SELECT * FROM discovery_results ORDER BY discovered_at DESC LIMIT 100").fetchall()
-            conn.close()
-            self._send_json([dict(r) for r in rows])
+            # Discovery results are returned inline from POST /api/discover/subnet;
+            # there is no persistent discovery_results table. Return empty rather
+            # than 500 so older dashboard builds don't error.
+            self._send_json([])
         elif path == "/api/remediate/history":
             from scanner import remediation
             host_id = int(params.get("host_id", 0)) if "host_id" in params else None
@@ -279,16 +262,6 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                 self._send_json(vuln)
             else:
                 self.send_error(404)
-                return
-            host_id = params.get("host_id")
-            scan_id = params.get("scan_id")
-            if host_id:
-                self._send_json(db.get_packages(
-                    int(host_id),
-                    scan_id=int(scan_id) if scan_id else None
-                ))
-            else:
-                self._send_json({"error": "host_id required"}, 400)
         else:
             self.send_error(404)
 
@@ -339,16 +312,22 @@ class VulnScanHandler(BaseHTTPRequestHandler):
             if host_id:
                 # Scan single host in background
                 def _scan():
-                    result = scan_host(int(host_id))
-                    logger.info(f"Background scan completed: {result}")
+                    try:
+                        result = scan_host(int(host_id))
+                        logger.info(f"Background scan completed: {result}")
+                    except Exception:
+                        logger.exception(f"Background scan failed for host {host_id}")
                 t = threading.Thread(target=_scan, daemon=True)
                 t.start()
                 self._send_json({"status": "scan_started", "host_id": host_id})
             else:
                 # Scan all
                 def _scan_all():
-                    results = scan_all()
-                    logger.info(f"Background scan-all completed: {len(results)} hosts")
+                    try:
+                        results = scan_all()
+                        logger.info(f"Background scan-all completed: {len(results)} hosts")
+                    except Exception:
+                        logger.exception("Background scan-all failed")
                 t = threading.Thread(target=_scan_all, daemon=True)
                 t.start()
                 self._send_json({"status": "scan_all_started"})
@@ -438,42 +417,9 @@ class VulnScanHandler(BaseHTTPRequestHandler):
                         'key_path': profile.get('ssh_key_path')
                     }]
             
-            # Run discovery in background
-            def _discover():
-                from scanner.collectors.network_discovery import scan_subnet
-                results = scan_subnet(
-                    subnet,
-                    credentials=credentials,
-                    quick=quick,
-                    snmp_community=snmp_community,
-                    snmp_version=snmp_version,
-                    snmp_port=snmp_port,
-                )
-                upserted = []
-                if auto_add:
-                    for host in results:
-                        host_id, status = db.upsert_discovered_host(host, credential_profile_id=credential_profile_id)
-                        upserted.append({"host_id": host_id, "status": status, "address": host["address"]})
-                    logger.info(f"Discovery auto-add completed: {len(upserted)} hosts upserted")
-                if auto_scan:
-                    host_ids = [entry["host_id"] for entry in upserted] if upserted else []
-                    if not host_ids:
-                        for host in results:
-                            existing = db.get_host_by_address(host["address"])
-                            if existing:
-                                host_ids.append(existing["id"])
-                    for host_id in sorted(set(host_ids)):
-                        try:
-                            result = scan_host(int(host_id))
-                            logger.info(f"Discovery auto-scan completed for host {host_id}: {result}")
-                        except Exception as e:
-                            logger.error(f"Discovery auto-scan failed for host {host_id}: {e}")
-                logger.info(f"Discovery completed: {len(results)} hosts found")
-            
-            t = threading.Thread(target=_discover, daemon=True)
-            t.start()
-            
-            # Also run synchronously for immediate results
+            # Run discovery synchronously and return results. (Previously this
+            # also kicked off an identical background thread, which double-ran
+            # discovery and double auto-added/auto-scanned every host found.)
             from scanner.collectors.network_discovery import scan_subnet
             results = scan_subnet(
                 subnet,
@@ -713,12 +659,18 @@ def run_server(host: str = "0.0.0.0", port: int = 8080):
     )
     db.init_db()
 
-    server = HTTPServer((host, port), VulnScanHandler)
+    # In-process scheduler: fires scans whose schedules are due. Without this
+    # the "Schedules" UI is inert and scans only ever run on manual trigger.
+    scheduler = SchedulerThread(db, scan_host, scan_all)
+    scheduler.start()
+
+    server = ThreadingHTTPServer((host, port), VulnScanHandler)
     logger.info(f"VulnScan API listening on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+        scheduler.stop()
         server.shutdown()
 
 
